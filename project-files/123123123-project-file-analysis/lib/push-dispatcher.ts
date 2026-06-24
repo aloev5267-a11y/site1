@@ -1,5 +1,5 @@
 import 'server-only'
-import { getLivechatApiKeyByChannelId, isConversationMuted } from './data'
+import { isConversationMuted } from './data'
 import {
   isPushConfigured,
   sendPushToManager,
@@ -48,44 +48,26 @@ function channelLabel(type?: string): string {
   }
 }
 
-// channelId -> public apiKey, cached so the deep-link lookup doesn't hit the DB
-// on every operator reply. Live-chat keys are effectively immutable.
-const apiKeyCache = new Map<string, string>()
-
-async function resolveApiKey(channelId: string): Promise<string | null> {
-  const cached = apiKeyCache.get(channelId)
-  if (cached) return cached
-  try {
-    const key = await getLivechatApiKeyByChannelId(channelId)
-    if (key) apiKeyCache.set(channelId, key)
-    return key
-  } catch {
-    return null
-  }
-}
-
 /**
- * Notify a website visitor (via their Web Push subscription registered on the
- * /c/<apiKey> page) when an operator/autopilot replies in a live-chat thread.
- * The notification deep-links back to that page so a click reopens the exact
- * conversation — even when no tab is open and even from an installed PWA.
+ * Notify a website visitor (via the Web Push subscription their browser
+ * registered through the host site's service worker) when an operator/autopilot
+ * replies in a live-chat thread. Clicking the notification reopens the site
+ * hosting the widget — even when no tab is open and even from an installed PWA.
  */
 async function handleVisitorReply(event: RealtimeEvent): Promise<void> {
   if (event.channelType !== 'livechat') return
   if (!event.channelId || !event.contactHandle) return
 
-  const apiKey = await resolveApiKey(event.channelId)
   const handle = event.contactHandle
   const sender = event.author?.trim() || 'Оператор'
   const body = event.body ? truncate(event.body) : 'Новый ответ'
-  const url = apiKey
-    ? `/c/${encodeURIComponent(apiKey)}?v=${encodeURIComponent(handle)}`
-    : '/'
 
   void sendPushToVisitor(event.channelId, handle, {
     title: sender,
     body,
-    url,
+    // The subscription lives on the visitor's own site (the widget host), so a
+    // relative root reopens the page where the chat widget is mounted.
+    url: '/',
     tag: `lc:${event.channelId}:${handle}`,
   }).catch(() => {
     /* delivery failures are handled/logged inside sendPushToVisitor */

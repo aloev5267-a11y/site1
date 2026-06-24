@@ -1727,27 +1727,6 @@ export async function getLivechatChannelByApiKey(
 }
 
 /**
- * Resolve a live-chat channel's public API key from its internal channel id.
- * Used by the push dispatcher to build the visitor deep-link (/c/<apiKey>) when
- * notifying a website visitor of an operator reply. Returns null when the
- * channel isn't live-chat or has no key yet.
- */
-export async function getLivechatApiKeyByChannelId(
-  channelId: string,
-): Promise<string | null> {
-  if (!channelId) return null
-  const rows = await query<{ api_key: string | null }>(
-    `SELECT config->>'apiKey' AS api_key
-       FROM channels
-      WHERE id = $1 AND type = 'livechat'
-      LIMIT 1`,
-    [channelId],
-  )
-  const key = rows[0]?.api_key
-  return key ? String(key) : null
-}
-
-/**
  * Resolve a live-chat channel AND its fully-merged widget config by API key.
  * Used by the public config endpoint the widget polls. Returns the channel
  * (for CORS/origin checks) plus the resolved per-site config with global

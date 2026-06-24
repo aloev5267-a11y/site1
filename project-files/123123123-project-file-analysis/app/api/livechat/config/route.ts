@@ -10,6 +10,7 @@ import {
 } from '@/lib/livechat'
 import { rateLimit } from '@/lib/rate-limit'
 import { isOffHoursFor } from '@/lib/offhours'
+import { getVapidPublicKey, isPushConfigured } from '@/lib/push'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -73,6 +74,10 @@ export async function GET(request: Request): Promise<Response> {
     active: channel.status !== 'disconnected',
     offHours,
     config: widget,
+    // Public VAPID key so the widget can subscribe the visitor to Web Push
+    // without hardcoding it. null when push isn't configured on the server, in
+    // which case the widget simply skips push subscription.
+    vapidPublicKey: isPushConfigured() ? getVapidPublicKey() : null,
   }
   const body = JSON.stringify(bodyObj)
 

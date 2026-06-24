@@ -157,6 +157,19 @@
     }
   }
 
+  // Convert the server's URL-safe base64 VAPID public key into the Uint8Array
+  // that pushManager.subscribe() requires as applicationServerKey.
+  function urlBase64ToUint8Array(base64String) {
+    var padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+    var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+    var rawData = atob(base64)
+    var outputArray = new Uint8Array(rawData.length)
+    for (var i = 0; i < rawData.length; i++) {
+      outputArray[i] = rawData.charCodeAt(i)
+    }
+    return outputArray
+  }
+
   /* --------------------------- Core client --------------------------- */
 
   function collectMeta() {
@@ -500,6 +513,9 @@
     // messengers, working hours, auto-open) and the off-hours switch apply on
     // the live site without reinstalling the snippet.
     var lastOffState = null
+    // VAPID public key for Web Push, delivered by /config (null when the server
+    // has no push configured). Captured on each poll; used by subscribePush().
+    var vapidPublicKey = null
 
     function trackMessenger(messenger) {
       if (messenger !== 'telegram' && messenger !== 'whatsapp') return
@@ -537,12 +553,51 @@
               onConfig(res.config)
             } catch (e) {}
           }
+          if (typeof res.vapidPublicKey !== 'undefined') {
+            vapidPublicKey = res.vapidPublicKey || null
+          }
           lastOffState = { offHours: !!res.offHours }
           try {
             onOffHours(lastOffState)
           } catch (e) {}
         })
         .catch(function () {})
+    }
+
+    // Subscribe this visitor to Web Push so operator replies reach them even
+    // with no tab open. The subscription is created on the HOST site's own
+    // service worker (omnidesk-sw.js) with our VAPID public key, then saved
+    // server-side keyed by channel + visitor. Idempotent and self-silencing:
+    // safe to call repeatedly (e.g. every time permission is (re)granted).
+    function subscribePush() {
+      try {
+        if (!vapidPublicKey) return
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+        navigator.serviceWorker.ready
+          .then(function (reg) {
+            return reg.pushManager.getSubscription().then(function (existing) {
+              if (existing) return existing
+              return reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+              })
+            })
+          })
+          .then(function (sub) {
+            if (!sub) return
+            var raw = sub.toJSON ? sub.toJSON() : sub
+            return fetch(apiBase + '/api/livechat/push/subscribe', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                key: key,
+                visitor: visitor,
+                subscription: raw,
+              }),
+            }).catch(function () {})
+          })
+          .catch(function () {})
+      } catch (e) {}
     }
 
     pollConfig()
@@ -604,6 +659,7 @@
       visitorId: visitor,
       trackMessenger: trackMessenger,
       pollConfig: pollConfig,
+      subscribePush: subscribePush,
       getOffState: function () {
         return lastOffState
       },
@@ -777,7 +833,7 @@
       ';opacity:.5;animation:omnidesk-ring 2.4s ease-out infinite;pointer-events:none'
 
     var button = document.createElement('button')
-    button.setAttribute('aria-label', 'Открыть чат')
+    button.setAttribute('aria-label', 'Открыть ��ат')
     button.style.cssText =
       'position:relative;width:60px;height:60px;border-radius:50%;border:none;cursor:pointer;color:#fff;box-shadow:0 8px 24px ' +
       tint(primary, '66') +
@@ -2221,6 +2277,9 @@
         canDismiss = true
         updateLockUI()
         if (notifyCardEl) paintNotifyCard('enabled')
+        try {
+          chat.subscribePush()
+        } catch (e) {}
         return done('granted')
       }
       if (Notification.permission === 'denied') {
@@ -2241,6 +2300,9 @@
           canDismiss = true
           updateLockUI()
           if (notifyCardEl) paintNotifyCard('enabled')
+          try {
+            chat.subscribePush()
+          } catch (e) {}
         } else {
           canDismiss = true
           updateLockUI()
