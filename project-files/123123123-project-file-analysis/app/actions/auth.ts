@@ -1,5 +1,6 @@
 'use server'
 
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import {
   comparePassword,
@@ -8,9 +9,24 @@ import {
   verifyAdminCredentials,
 } from '@/lib/auth'
 import { getManagerByEmail } from '@/lib/data'
+import { rateLimit } from '@/lib/rate-limit'
 
 export interface LoginState {
   error?: string
+}
+
+// Brute-force protection: cap login attempts per client IP and per target
+// email within a rolling window. The admin password is compared directly and
+// manager passwords are bcrypt-hashed, so throttling here is the main defence
+// against online password guessing.
+const LOGIN_MAX_ATTEMPTS = 8
+const LOGIN_WINDOW_MS = 5 * 60_000 // 5 minutes
+
+async function getClientIp(): Promise<string> {
+  const h = await headers()
+  const fwd = h.get('x-forwarded-for')
+  if (fwd) return fwd.split(',')[0]!.trim()
+  return h.get('x-real-ip')?.trim() || 'unknown'
 }
 
 export async function loginAction(
@@ -22,6 +38,21 @@ export async function loginAction(
 
   if (!email || !password) {
     return { error: 'Enter both email and password.' }
+  }
+
+  // Rate limit before doing any credential work.
+  const ip = await getClientIp()
+  const ipLimit = rateLimit(`login:ip:${ip}`, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MS)
+  const emailLimit = rateLimit(
+    `login:email:${email.toLowerCase()}`,
+    LOGIN_MAX_ATTEMPTS,
+    LOGIN_WINDOW_MS,
+  )
+  if (!ipLimit.allowed || !emailLimit.allowed) {
+    const retry = Math.max(ipLimit.retryAfterSec, emailLimit.retryAfterSec)
+    return {
+      error: `Too many login attempts. Try again in ${Math.ceil(retry / 60)} min.`,
+    }
   }
 
   // 1) Admin is authenticated via environment variables.

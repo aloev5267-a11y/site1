@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { env } from './env.js'
 import { logger } from './logger.js'
 import { registry } from './registry.js'
@@ -20,8 +21,9 @@ export function startHttpServer(): void {
       return json(res, 200, { ok: true, ts: Date.now() })
     }
 
-    // Everything else requires the shared secret.
-    if (req.headers['x-worker-secret'] !== env.workerSecret) {
+    // Everything else requires the shared secret (constant-time comparison).
+    const provided = req.headers['x-worker-secret']
+    if (typeof provided !== 'string' || !secretMatches(provided, env.workerSecret)) {
       return json(res, 401, { error: 'unauthorized' })
     }
 
@@ -145,6 +147,13 @@ export function startHttpServer(): void {
   server.listen(env.workerPort, '127.0.0.1', () => {
     logger.info(`Worker HTTP API on http://127.0.0.1:${env.workerPort}`)
   })
+}
+
+/** Constant-time secret comparison (hash both sides to equalize length). */
+function secretMatches(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a).digest()
+  const hb = createHash('sha256').update(b).digest()
+  return timingSafeEqual(ha, hb)
 }
 
 function json(

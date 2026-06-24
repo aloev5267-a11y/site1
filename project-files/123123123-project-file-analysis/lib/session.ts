@@ -11,12 +11,31 @@ export const SESSION_COOKIE = 'omnidesk_session'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7 // 7 days
 
 function getSecret(): Uint8Array {
-  const secret =
-    process.env.AUTH_SECRET ||
-    // Dev/preview fallback so the app boots without configuration.
-    // ALWAYS set AUTH_SECRET in production (e.g. `openssl rand -base64 32`).
-    'dev-only-insecure-secret-change-me-in-production-0000'
-  return new TextEncoder().encode(secret)
+  const secret = process.env.AUTH_SECRET
+
+  if (secret && secret.length >= 16) {
+    return new TextEncoder().encode(secret)
+  }
+
+  // In production we NEVER fall back to a baked-in secret: doing so would let
+  // anyone who has seen the source code forge an admin JWT. Fail loudly so the
+  // deployment is fixed instead of running wide open.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'AUTH_SECRET is not set (or is too short). Generate a strong value with ' +
+        '`openssl rand -base64 32` and set it in your environment before starting the app.',
+    )
+  }
+
+  // Dev/preview only: allow the app to boot without configuration, but make the
+  // insecurity obvious in the logs.
+  console.warn(
+    '[session] AUTH_SECRET is not set — using an INSECURE development fallback. ' +
+      'Set AUTH_SECRET before deploying to production.',
+  )
+  return new TextEncoder().encode(
+    'dev-only-insecure-secret-change-me-in-production-0000',
+  )
 }
 
 export async function signSession(user: SessionUser): Promise<string> {

@@ -40,7 +40,24 @@ function resolveKey(): Buffer {
   } catch {
     // fall through
   }
-  // Fallback: derive a stable 32-byte key from whatever was provided.
+
+  // The value is neither 32-byte hex nor 32-byte base64. In production we refuse
+  // to silently stretch a low-entropy string into a key — that would encrypt
+  // Telegram sessions / proxy credentials under a guessable key. Fail fast so
+  // the operator generates a proper key.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'ENCRYPTION_KEY is weak or malformed. Provide a 32-byte key as 64 hex ' +
+        'chars (openssl rand -hex 32) or base64 (openssl rand -base64 32).',
+    )
+  }
+
+  // Dev only: derive a stable 32-byte key from whatever was provided so the app
+  // still boots locally, but warn loudly.
+  console.warn(
+    '[crypto] ENCRYPTION_KEY is not a proper 32-byte key — deriving one via ' +
+      'SHA-256 (DEV ONLY). Generate a real key with `openssl rand -hex 32`.',
+  )
   return createHash('sha256').update(raw).digest()
 }
 

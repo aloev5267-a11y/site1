@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'crypto'
 import {
   getMaxChannelById,
   recordMaxInbound,
@@ -8,6 +9,13 @@ import { maxUserName, type MaxUpdate } from '@/lib/max'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+/** Constant-time secret comparison (hash both sides to equalize length). */
+function secretMatches(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a).digest()
+  const hb = createHash('sha256').update(b).digest()
+  return timingSafeEqual(ha, hb)
+}
 
 /**
  * Inbound webhook for a MAX bot channel.
@@ -34,7 +42,7 @@ export async function POST(
 
   // Verify the request really came from MAX (the secret we set at subscribe).
   const secret = request.headers.get('x-max-bot-api-secret')
-  if (!secret || secret !== channel.webhookSecret) {
+  if (!secret || !secretMatches(secret, channel.webhookSecret)) {
     return json({ ok: false, error: 'bad_secret' }, 401)
   }
 

@@ -58,7 +58,14 @@ export function originAllowed(
   channel: Pick<LivechatChannel, 'domain'>,
 ): boolean {
   const domains = parseAllowedDomains(channel.domain)
-  if (domains.length === 0 || domains.includes('*')) return true
+  if (domains.length === 0) {
+    // No domain configured. By default we stay permissive for back-compat
+    // (the API key is the boundary). Operators can flip LIVECHAT_STRICT_ORIGIN
+    // to require an explicit domain allow-list on every channel, which denies
+    // any channel that hasn't opted in.
+    return process.env.LIVECHAT_STRICT_ORIGIN !== 'true'
+  }
+  if (domains.includes('*')) return true
   if (!origin) return false
   let host: string
   try {

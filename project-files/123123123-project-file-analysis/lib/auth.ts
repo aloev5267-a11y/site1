@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs'
+import { createHash, timingSafeEqual } from 'crypto'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getManagerAuthState } from './data'
@@ -20,14 +21,25 @@ import type { SessionUser } from './types'
 export const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').trim().toLowerCase()
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 
+/**
+ * Constant-time string comparison that does not leak length via early return.
+ * Both sides are SHA-256 hashed first so `timingSafeEqual` always receives
+ * equal-length buffers regardless of input length.
+ */
+function safeEqual(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a).digest()
+  const hb = createHash('sha256').update(b).digest()
+  return timingSafeEqual(ha, hb)
+}
+
 export function verifyAdminCredentials(
   email: string,
   password: string,
 ): boolean {
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) return false
-  return (
-    email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD
-  )
+  const emailOk = safeEqual(email.trim().toLowerCase(), ADMIN_EMAIL)
+  const passwordOk = safeEqual(password, ADMIN_PASSWORD)
+  return emailOk && passwordOk
 }
 
 /* ---------------------------- Passwords ----------------------------- */

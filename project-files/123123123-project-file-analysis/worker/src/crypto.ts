@@ -23,6 +23,17 @@ function resolveKey(): Buffer {
   } catch {
     /* fall through */
   }
+
+  // Refuse to stretch a weak/malformed key in production — it must match the
+  // panel's key exactly and be a real 32-byte value, otherwise encrypted
+  // channel secrets are protected by a guessable key.
+  if (env.nodeEnv === 'production') {
+    throw new Error(
+      'ENCRYPTION_KEY is weak or malformed. Provide a 32-byte key as 64 hex ' +
+        'chars (openssl rand -hex 32) or base64 (openssl rand -base64 32). ' +
+        'It MUST be identical to the panel.',
+    )
+  }
   return createHash('sha256').update(raw).digest()
 }
 
