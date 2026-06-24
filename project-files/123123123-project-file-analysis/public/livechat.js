@@ -1,35 +1,32 @@
 /*
- * Omnidesk live-chat browser SDK.
+ * Support chat browser SDK.
  *
  * Two ways to use it:
  *
  * 1) Drop-in widget (no code) — add to any site:
- *      <script async src="https://YOUR_PANEL/livechat.js"
- *              data-omnidesk-key="lc_xxx"></script>
+ *      <script async src="https://YOUR_SITE/widget.js"
+ *              data-support-key="lc_xxx"></script>
  *    A floating button (+ optional greeting teaser) and chat panel are mounted
  *    automatically. Look & feel, welcome message, quick replies, messengers,
- *    working hours and auto-open are ALL configured from the admin and fetched
- *    live from /api/livechat/config — so editing the widget in the panel
- *    updates the live site without touching the snippet. The data-* attributes
- *    below are optional bootstrap fallbacks used only until the server config
- *    loads:
- *      data-omnidesk-title, data-omnidesk-color, data-omnidesk-greeting,
- *      data-omnidesk-name, data-omnidesk-subject
+ *    working hours and auto-open are ALL configured remotely and fetched live
+ *    from /api/livechat/config — so editing the widget updates the live site
+ *    without touching the snippet. The data-* attributes below are optional
+ *    bootstrap fallbacks used only until the server config loads:
+ *      data-support-title, data-support-color, data-support-greeting,
+ *      data-support-name, data-support-subject
+ *    (Older data-* attribute names are still accepted for compatibility.)
  *
  *    Control + observe it via the global object:
- *      OmnideskLiveChat.open({ name, subject, message })  // open + prefill
- *      OmnideskLiveChat.close()
- *      OmnideskLiveChat.on('open',          () => { ... })
- *      OmnideskLiveChat.on('close',         () => { ... })
- *      OmnideskLiveChat.on('message_sent',  ({ body, count }) => { ... })
- *      OmnideskLiveChat.on('first_message', ({ body }) => { ... })
+ *      SupportChat.open({ name, subject, message })  // open + prefill
+ *      SupportChat.close()
+ *      SupportChat.on('open',          () => { ... })
+ *      SupportChat.on('close',         () => { ... })
+ *      SupportChat.on('message_sent',  ({ body, count }) => { ... })
+ *      SupportChat.on('first_message', ({ body }) => { ... })
  *
  * 2) Programmatic API (custom React/Vue/etc. UI):
- *      const chat = window.OmnideskLiveChat.create({ key: 'lc_xxx', ... })
+ *      const chat = window.SupportChat.create({ key: 'lc_xxx', ... })
  *      chat.send('Hello'); chat.on('message_sent', e => {}); chat.disconnect()
- *
- * The data contract is identical to what the panel inbox uses, so messages flow
- * straight into the right manager's inbox in realtime.
  */
 (function () {
   'use strict'
@@ -41,9 +38,23 @@
       var s = document.getElementsByTagName('script')
       return s[s.length - 1]
     })()
+  // Base path the script is served under. When the host site proxies us as a
+  // first-party path (e.g. https://client.com/__support/widget.js) we KEEP that
+  // prefix so every API call, the service worker and the manifest also resolve
+  // under /__support on the client's own origin — the panel never appears in the
+  // network tab. For a classic root install (https://panel/livechat.js) the
+  // prefix is empty and behaviour is identical to before.
+  var SCRIPT_DIR = (function () {
+    try {
+      return new URL(currentScript.src).pathname.replace(/\/[^/]*$/, '')
+    } catch (e) {
+      return ''
+    }
+  })()
   var DEFAULT_BASE = (function () {
     try {
-      return new URL(currentScript.src).origin
+      var u = new URL(currentScript.src)
+      return (u.origin + SCRIPT_DIR).replace(/\/$/, '')
     } catch (e) {
       return ''
     }
@@ -137,6 +148,9 @@
   }
 
   function storageKey(key) {
+    return 'sc_uid_' + key
+  }
+  function legacyStorageKey(key) {
     return 'omnidesk_visitor_' + key
   }
 
@@ -145,6 +159,13 @@
     try {
       var existing = localStorage.getItem(k)
       if (existing) return existing
+      // Migrate a returning visitor from the legacy key so their identity (and
+      // therefore their conversation history) is preserved across this update.
+      var legacy = localStorage.getItem(legacyStorageKey(key))
+      if (legacy) {
+        localStorage.setItem(k, legacy)
+        return legacy
+      }
       var id =
         'v_' +
         (window.crypto && window.crypto.randomUUID
@@ -197,7 +218,7 @@
   function create(opts) {
     opts = opts || {}
     var key = opts.key
-    if (!key) throw new Error('OmnideskLiveChat: "key" is required')
+    if (!key) throw new Error('SupportChat: "key" is required')
 
     var apiBase = (opts.apiBase || DEFAULT_BASE || '').replace(/\/$/, '')
     var visitor = opts.visitor || getVisitorId(key)
@@ -566,7 +587,7 @@
 
     // Subscribe this visitor to Web Push so operator replies reach them even
     // with no tab open. The subscription is created on the HOST site's own
-    // service worker (omnidesk-sw.js) with our VAPID public key, then saved
+    // service worker (sw.js) with our VAPID public key, then saved
     // server-side keyed by channel + visitor. Idempotent and self-silencing:
     // safe to call repeatedly (e.g. every time permission is (re)granted).
     function subscribePush() {
@@ -698,36 +719,36 @@
   // can't express @keyframes, so we add a single tagged <style> block. Guarded
   // by an id so repeated mounts (and the admin preview) don't duplicate it.
   function injectWidgetStyles(doc) {
-    if (doc.getElementById('omnidesk-widget-styles')) return
+    if (doc.getElementById('csw-styles')) return
     var style = doc.createElement('style')
-    style.id = 'omnidesk-widget-styles'
+    style.id = 'csw-styles'
     style.textContent =
-      '@keyframes omnidesk-pop{0%{opacity:0;transform:translateY(12px) scale(.96)}100%{opacity:1;transform:translateY(0) scale(1)}}' +
-      '@keyframes omnidesk-pop-out{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(12px) scale(.96)}}' +
-      '@keyframes omnidesk-fade-out{0%{opacity:1}100%{opacity:0}}' +
-      '@keyframes omnidesk-fade-up{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}' +
-      '@keyframes omnidesk-launch-in{0%{opacity:0;transform:scale(.5)}60%{transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}' +
-      '@keyframes omnidesk-ring{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.9);opacity:0}}' +
-      '@keyframes omnidesk-dot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}' +
-      '@keyframes omnidesk-fs-in{0%{opacity:0;transform:scale(1.03)}100%{opacity:1;transform:scale(1)}}' +
+      '@keyframes csw-pop{0%{opacity:0;transform:translateY(12px) scale(.96)}100%{opacity:1;transform:translateY(0) scale(1)}}' +
+      '@keyframes csw-pop-out{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(12px) scale(.96)}}' +
+      '@keyframes csw-fade-out{0%{opacity:1}100%{opacity:0}}' +
+      '@keyframes csw-fade-up{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}' +
+      '@keyframes csw-launch-in{0%{opacity:0;transform:scale(.5)}60%{transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}' +
+      '@keyframes csw-ring{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.9);opacity:0}}' +
+      '@keyframes csw-dot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}' +
+      '@keyframes csw-fs-in{0%{opacity:0;transform:scale(1.03)}100%{opacity:1;transform:scale(1)}}' +
       // Opacity-only variant for the centred desktop card: a transform-based
       // animation would clobber its translate(-50%,-50%) centring.
-      '@keyframes omnidesk-fs-fade{0%{opacity:0}100%{opacity:1}}' +
-      '@keyframes omnidesk-bell{0%,100%{transform:rotate(0)}20%{transform:rotate(-12deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-6deg)}80%{transform:rotate(4deg)}}' +
-      '.omnidesk-bell-anim{animation:omnidesk-bell 1.6s ease-in-out infinite;transform-origin:50% 4px}' +
-      '.omnidesk-bubble-in{animation:omnidesk-fade-up .26s cubic-bezier(.21,1.02,.73,1) both}' +
-      '.omnidesk-typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin:0 2px;animation:omnidesk-dot 1.2s infinite ease-in-out}' +
-      '.omnidesk-typing span:nth-child(2){animation-delay:.15s}' +
-      '.omnidesk-typing span:nth-child(3){animation-delay:.3s}' +
+      '@keyframes csw-fs-fade{0%{opacity:0}100%{opacity:1}}' +
+      '@keyframes csw-bell{0%,100%{transform:rotate(0)}20%{transform:rotate(-12deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-6deg)}80%{transform:rotate(4deg)}}' +
+      '.csw-bell-anim{animation:csw-bell 1.6s ease-in-out infinite;transform-origin:50% 4px}' +
+      '.csw-bubble-in{animation:csw-fade-up .26s cubic-bezier(.21,1.02,.73,1) both}' +
+      '.csw-typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin:0 2px;animation:csw-dot 1.2s infinite ease-in-out}' +
+      '.csw-typing span:nth-child(2){animation-delay:.15s}' +
+      '.csw-typing span:nth-child(3){animation-delay:.3s}' +
       // Mobile: keep the panel comfortably inside the viewport instead of the
       // fixed 384×600 box (which is oversized on phones). Excludes the forced-
-      // fullscreen state (.omnidesk-fs) so the lock can still go edge-to-edge.
+      // fullscreen state (.csw-fs) so the lock can still go edge-to-edge.
       // Breakpoint matches isMobileViewport() (640px) so panel sizing and the
       // lock's mobile behaviour switch at the same width. dvh (with a vh
       // fallback) tracks the *dynamic* viewport so mobile browser chrome
       // showing/hiding can't push the panel off-screen.
       '@media (max-width:640px){' +
-      '[data-omnidesk-panel]:not(.omnidesk-fs){' +
+      '[data-csw-panel]:not(.csw-fs){' +
       'width:calc(100vw - 24px) !important;' +
       'max-width:calc(100vw - 24px) !important;' +
       'height:70vh !important;' +
@@ -740,7 +761,7 @@
       // an instant state change. Scoped to the widget so we never touch the host
       // page. The launcher/panel still appear — just without movement.
       '@media (prefers-reduced-motion: reduce){' +
-      '[data-omnidesk-widget] *,[data-omnidesk-panel],[data-omnidesk-panel] *{' +
+      '[data-csw-widget] *,[data-csw-panel],[data-csw-panel] *{' +
       'animation-duration:.001ms !important;' +
       'animation-iteration-count:1 !important;' +
       'transition-duration:.001ms !important;' +
@@ -796,7 +817,7 @@
 
     /* ----- Root + launcher ----- */
     var root = document.createElement('div')
-    root.setAttribute('data-omnidesk-widget', '')
+    root.setAttribute('data-csw-widget', '')
     // pointer-events:none so the full-width container never swallows taps in the
     // empty space around the widget (which blocked host-site buttons near it).
     // Each interactive child re-enables pointer-events:auto on itself.
@@ -830,7 +851,7 @@
     ring.style.cssText =
       'position:absolute;inset:0;border-radius:50%;background:' +
       primary +
-      ';opacity:.5;animation:omnidesk-ring 2.4s ease-out infinite;pointer-events:none'
+      ';opacity:.5;animation:csw-ring 2.4s ease-out infinite;pointer-events:none'
 
     var button = document.createElement('button')
     button.setAttribute('aria-label', 'Открыть ��ат')
@@ -878,7 +899,7 @@
         unreadBadge.style.animation = 'none'
         // eslint-disable-next-line no-unused-expressions
         unreadBadge.offsetWidth // force reflow so the animation restarts
-        unreadBadge.style.animation = 'omnidesk-launch-in .4s ease both'
+        unreadBadge.style.animation = 'csw-launch-in .4s ease both'
         launcherPip.style.display = 'none' // badge supersedes the idle pip
       } else {
         unreadBadge.style.display = 'none'
@@ -925,7 +946,7 @@
 
     /* ----- Panel ----- */
     var panel = document.createElement('div')
-    panel.setAttribute('data-omnidesk-panel', '')
+    panel.setAttribute('data-csw-panel', '')
     panel.setAttribute('role', 'dialog')
     panel.setAttribute('aria-modal', 'false')
     panel.setAttribute('aria-label', 'Окно чата поддержки')
@@ -1031,7 +1052,7 @@
       ';font-size:13px;max-width:80%'
     var typingName = document.createElement('span')
     var typingDots = document.createElement('span')
-    typingDots.className = 'omnidesk-typing'
+    typingDots.className = 'csw-typing'
     typingDots.style.color = MUTED_FG
     typingDots.innerHTML = '<span></span><span></span><span></span>'
     typingEl.appendChild(typingDots)
@@ -1197,7 +1218,7 @@
       row.style.cssText =
         'display:flex;' + (mine ? 'justify-content:flex-end' : 'justify-content:flex-start')
       var el = document.createElement('div')
-      el.className = 'omnidesk-bubble-in'
+      el.className = 'csw-bubble-in'
       el.style.cssText =
         'max-width:80%;padding:11px 15px;font-size:14px;line-height:1.5;word-wrap:break-word;overflow-wrap:anywhere;border-radius:20px;' +
         (mine
@@ -1497,7 +1518,7 @@
           BORDER +
           ';border-radius:16px;border-bottom-right-radius:5px;background:#fff;color:' +
           FG +
-          ';box-shadow:0 12px 32px -8px rgba(15,23,42,.22),0 0 0 1px rgba(15,23,42,.03);cursor:pointer;text-align:left;font-size:14px;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease;animation:omnidesk-pop .3s cubic-bezier(.21,1.02,.73,1) both'
+          ';box-shadow:0 12px 32px -8px rgba(15,23,42,.22),0 0 0 1px rgba(15,23,42,.03);cursor:pointer;text-align:left;font-size:14px;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease;animation:csw-pop .3s cubic-bezier(.21,1.02,.73,1) both'
         teaser._title = document.createElement('span')
         teaser._title.style.cssText = 'font-weight:600'
         teaser._sub = document.createElement('span')
@@ -1572,7 +1593,7 @@
       activeConfirmed = true
       launcher.style.display = 'block'
       button.style.animation =
-        'omnidesk-launch-in .4s cubic-bezier(.34,1.56,.64,1) both'
+        'csw-launch-in .4s cubic-bezier(.34,1.56,.64,1) both'
       if (teaser && !teaserDismissed) teaser.style.display = 'flex'
       maybeScheduleAutoOpen()
     }
@@ -1742,7 +1763,7 @@
       isOpen = true
       clearUnread()
       panel.style.display = 'flex'
-      panel.style.animation = 'omnidesk-pop .28s cubic-bezier(.21,1.02,.73,1) both'
+      panel.style.animation = 'csw-pop .28s cubic-bezier(.21,1.02,.73,1) both'
       // Show the welcome bubble on first open if the thread is empty.
       if (!hasRealMessages) renderWelcome()
       button.setAttribute('aria-label', 'Свернуть чат')
@@ -1775,18 +1796,18 @@
       // fade it out instead. Either way we reset to the docked bubble afterward.
       var expanded = false
       try {
-        expanded = panel.classList.contains('omnidesk-fs')
+        expanded = panel.classList.contains('csw-fs')
       } catch (e) {}
       if (expanded) hideBackdrop()
       panel.style.animation = expanded
-        ? 'omnidesk-fade-out .2s ease both'
-        : 'omnidesk-pop-out .2s cubic-bezier(.4,0,1,1) both'
+        ? 'csw-fade-out .2s ease both'
+        : 'csw-pop-out .2s cubic-bezier(.4,0,1,1) both'
       var done = function () {
         if (isOpen) return
         panel.style.display = 'none'
         panel.style.animation = 'none'
         // Reset any expanded sizing so the next open is the normal docked bubble.
-        if (panel.classList.contains('omnidesk-fs')) exitFullscreen()
+        if (panel.classList.contains('csw-fs')) exitFullscreen()
         panel.removeEventListener('animationend', done)
       }
       panel.addEventListener('animationend', done)
@@ -1943,7 +1964,7 @@
     function enterFullscreen() {
       // Mark expanded so the mobile media query stops constraining the panel.
       try {
-        panel.classList.add('omnidesk-fs')
+        panel.classList.add('csw-fs')
       } catch (e) {}
       panel.style.position = 'fixed'
       panel.style.zIndex = '1'
@@ -1985,14 +2006,14 @@
       // Mobile keeps the scale-in; the centred desktop card fades only so its
       // translate(-50%,-50%) centring isn't overridden by the animation.
       panel.style.animation = isMobileViewport()
-        ? 'omnidesk-fs-in .32s cubic-bezier(.21,1.02,.73,1) both'
-        : 'omnidesk-fs-fade .26s ease both'
+        ? 'csw-fs-in .32s cubic-bezier(.21,1.02,.73,1) both'
+        : 'csw-fs-fade .26s ease both'
     }
     function exitFullscreen() {
       exitDeviceFullscreen()
       hideBackdrop()
       try {
-        panel.classList.remove('omnidesk-fs')
+        panel.classList.remove('csw-fs')
       } catch (e) {}
       panel.style.background = ''
       panel.style.position = ''
@@ -2035,7 +2056,7 @@
         tint(primary, '12') +
         ';color:' +
         FG +
-        ';animation:omnidesk-fade-up .3s cubic-bezier(.21,1.02,.73,1) both'
+        ';animation:csw-fade-up .3s cubic-bezier(.21,1.02,.73,1) both'
       var ic = document.createElement('span')
       ic.style.cssText =
         'flex-shrink:0;display:flex;color:' + primary
@@ -2146,7 +2167,7 @@
       chip.innerHTML =
         mode === 'enabled'
           ? ICON_CHECK
-          : '<span class="omnidesk-bell-anim" style="display:flex">' +
+          : '<span class="csw-bell-anim" style="display:flex">' +
             ICON_BELL +
             '</span>'
 
@@ -2253,7 +2274,7 @@
         tint(primary, '14') +
         ',' +
         tint(primary, '08') +
-        ');animation:omnidesk-fade-up .3s cubic-bezier(.21,1.02,.73,1) both'
+        ');animation:csw-fade-up .3s cubic-bezier(.21,1.02,.73,1) both'
       // Place it just above the composer so it's always visible.
       safeInsertBefore(panel, notifyCardEl, form)
       paintNotifyCard(notifyEnabled ? 'enabled' : 'offer')
@@ -2330,7 +2351,7 @@
         var opts = {
           body: msg && msg.body ? msg.body : 'Оператор ответил вам',
           icon: cfg.appearance.agentAvatar || undefined,
-          tag: 'omnidesk-reply',
+          tag: 'csw-reply',
         }
         // Android Chrome forbids `new Notification()` and requires the service
         // worker. Prefer the host SW registration when present; fall back to the
@@ -2390,8 +2411,8 @@
 
     /* ============================ INSTALL GATE ============================ *
      * Require the visitor to install the host site as an app (PWA) before they
-     * can send their first message. See public/omnidesk-sw.js for why the host
-     * site must ship one tiny same-origin service-worker file.
+     * can send their first message. See public/sw.js for why the host site
+     * must ship one tiny same-origin service-worker file.
      * ===================================================================== */
     var deferredPrompt = null // captured beforeinstallprompt event (Chromium)
     var installGateEl = null // the install card element (null when hidden)
@@ -2401,7 +2422,9 @@
 
     // Returning visitors who already installed shouldn't be nagged again.
     try {
-      pwaInstalled = localStorage.getItem('omnidesk_pwa_installed') === '1'
+      pwaInstalled =
+        localStorage.getItem('sc_app_installed') === '1' ||
+        localStorage.getItem('omnidesk_pwa_installed') === '1'
     } catch (e) {}
 
     function isStandalone() {
@@ -2459,13 +2482,13 @@
           theme_color: isHex(primary) ? primary : '#2563eb',
           icons: [
             {
-              src: base + '/omnidesk-app-192.png',
+              src: base + '/app-icon-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any maskable',
             },
             {
-              src: base + '/omnidesk-app-512.png',
+              src: base + '/app-icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any maskable',
@@ -2477,7 +2500,7 @@
         })
         var link = document.createElement('link')
         link.rel = 'manifest'
-        link.setAttribute('data-omnidesk-manifest', '')
+        link.setAttribute('data-csw-manifest', '')
         link.href = URL.createObjectURL(blob)
         ;(document.head || document.documentElement).appendChild(link)
         manifestInjected = true
@@ -2490,8 +2513,14 @@
     function registerHostSW() {
       try {
         if (!('serviceWorker' in navigator)) return
+        // Served same-origin as the page: at the site root for a classic
+        // install, or under the first-party prefix (e.g. /__support/widget-sw.js)
+        // when proxied. scope '/' lets it control the whole site (and makes
+        // serviceWorker.ready resolve for push) — this needs the response header
+        // Service-Worker-Allowed: / which the panel/proxy sends.
+        var swUrl = location.origin + SCRIPT_DIR + '/widget-sw.js'
         navigator.serviceWorker
-          .register(location.origin + '/omnidesk-sw.js', { scope: '/' })
+          .register(swUrl, { scope: '/' })
           .then(function () {
             swReady = true
             if (installGateEl) paintInstallGate()
@@ -2516,7 +2545,7 @@
       window.addEventListener('appinstalled', function () {
         pwaInstalled = true
         try {
-          localStorage.setItem('omnidesk_pwa_installed', '1')
+          localStorage.setItem('sc_app_installed', '1')
         } catch (e) {}
         onGatePassed()
       })
@@ -2623,7 +2652,7 @@
       } else {
         t.textContent = 'Установка недоступна в этом браузере'
         s.textContent =
-          'Чтобы написать нам, откройте сайт в Google Chrome (Android/компьютер) и установите приложение.'
+          'Чтобы написать нам, откройте сайт в Google Chrome (Android/ком��ьютер) и установите приложение.'
       }
       txt.appendChild(t)
       txt.appendChild(s)
@@ -2670,7 +2699,7 @@
         tint(primary, '14') +
         ',' +
         tint(primary, '08') +
-        ');animation:omnidesk-fade-up .3s cubic-bezier(.21,1.02,.73,1) both'
+        ');animation:csw-fade-up .3s cubic-bezier(.21,1.02,.73,1) both'
       safeInsertBefore(panel, installGateEl, form)
       paintInstallGate()
     }
@@ -2763,7 +2792,7 @@
   var pendingOn = []
   var instance = null
 
-  window.OmnideskLiveChat = {
+  var publicApi = {
     create: create,
     mountWidget: mountWidget,
     on: function (event, cb) {
@@ -2782,10 +2811,26 @@
     },
   }
 
+  // Primary, neutral global name. The old name is kept as an alias so snippets
+  // and analytics hooks from already-deployed sites keep working unchanged.
+  window.SupportChat = publicApi
+  window.OmnideskLiveChat = publicApi
+
+  // Read a data-* attribute by its neutral name, falling back to the legacy
+  // brand-prefixed name so snippets already deployed on customer sites keep
+  // working after this update.
+  function attr(name) {
+    if (!currentScript) return ''
+    return (
+      currentScript.getAttribute('data-support-' + name) ||
+      currentScript.getAttribute('data-omnidesk-' + name) ||
+      ''
+    )
+  }
+
   // Preview mode: mounted inside the admin editor iframe. No network; config
   // arrives via postMessage from the parent window.
-  var isPreview =
-    currentScript && currentScript.getAttribute('data-omnidesk-preview')
+  var isPreview = attr('preview')
   if (isPreview) {
     var bootPreview = function () {
       instance = mountWidget(clientDefaultConfig(), { preview: true })
@@ -2810,20 +2855,20 @@
     }
   }
 
-  // Auto-mount when the script tag carries data-omnidesk-key.
-  var autoKey = currentScript && currentScript.getAttribute('data-omnidesk-key')
+  // Auto-mount when the script tag carries data-support-key (or an older
+  // equivalent attribute name).
+  var autoKey = attr('key')
   if (autoKey && !isPreview) {
     var boot = function () {
       var boot0 = bootConfigFrom({
-        title: currentScript.getAttribute('data-omnidesk-title') || '',
-        color: currentScript.getAttribute('data-omnidesk-color') || '',
-        greeting: currentScript.getAttribute('data-omnidesk-greeting') || '',
-        name: currentScript.getAttribute('data-omnidesk-name') || '',
+        title: attr('title'),
+        color: attr('color'),
+        greeting: attr('greeting'),
+        name: attr('name'),
       })
       // Stash the key/subject so mountWidget's create() can use them.
       boot0.__key = autoKey
-      boot0.__subject =
-        currentScript.getAttribute('data-omnidesk-subject') || ''
+      boot0.__subject = attr('subject')
       instance = mountWidget(boot0, { preview: false })
       pendingOn.forEach(function (pair) {
         instance.on(pair[0], pair[1])
