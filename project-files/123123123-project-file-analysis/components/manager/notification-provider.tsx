@@ -1,0 +1,201 @@
+'use client'
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { toast } from 'sonner'
+import { getPushConfigAction, subscribePushAction } from '@/app/actions/push'
+
+export type PushSupport = 'checking' | 'ok' | 'unsupported' | 'ios-needs-install'
+export type PushPermission = 'default' | 'denied' | 'granted'
+
+interface NotificationState {
+  support: PushSupport
+  permission: PushPermission
+  configured: boolean
+  subscribed: boolean
+  busy: boolean
+  /** True only when notifications are fully active on this device. */
+  ready: boolean
+  /** True while we are still detecting capabilities (avoid flashing the gate). */
+  loading: boolean
+  enable: () => Promise<void>
+}
+
+const NotificationContext = createContext<NotificationState | null>(null)
+
+export function useNotifications(): NotificationState {
+  const ctx = useContext(NotificationContext)
+  if (!ctx) {
+    throw new Error('useNotifications must be used within <NotificationProvider>')
+  }
+  return ctx
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  const output = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i)
+  return output
+}
+
+function detectIosNeedsInstall(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const isIos = /iphone|ipad|ipod/i.test(ua)
+  const isStandalone =
+    (window.navigator as unknown as { standalone?: boolean }).standalone ===
+      true || window.matchMedia('(display-mode: standalone)').matches
+  return isIos && !isStandalone
+}
+
+export function NotificationProvider({ children }: { children: ReactNode }) {
+  const [support, setSupport] = useState<PushSupport>('checking')
+  const [permission, setPermission] = useState<PushPermission>('default')
+  const [configured, setConfigured] = useState(false)
+  const [subscribed, setSubscribed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const publicKeyRef = useRef<string>('')
+
+  const doSubscribe = useCallback(async (): Promise<boolean> => {
+    const reg = await navigator.serviceWorker.ready
+    let sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      if (!publicKeyRef.current) return false
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKeyRef.current),
+      })
+    }
+    const json = sub.toJSON() as {
+      endpoint?: string
+      keys?: { p256dh?: string; auth?: string }
+    }
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false
+    const res = await subscribePushAction({
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth: json.keys.auth,
+    })
+    if (res.ok) {
+      setSubscribed(true)
+      return true
+    }
+    return false
+  }, [])
+
+  // Bootstrap: feature detection, server config, SW registration, current state.
+  useEffect(() => {
+    let cancelled = false
+    async function init() {
+      if (
+        typeof window === 'undefined' ||
+        !('serviceWorker' in navigator) ||
+        !('Notification' in window) ||
+        !('PushManager' in window)
+      ) {
+        if (!cancelled) {
+          setSupport(
+            detectIosNeedsInstall() ? 'ios-needs-install' : 'unsupported',
+          )
+        }
+        return
+      }
+
+      let config: { configured: boolean; publicKey: string }
+      try {
+        config = await getPushConfigAction()
+      } catch {
+        if (!cancelled) setSupport('unsupported')
+        return
+      }
+      if (cancelled) return
+      setConfigured(config.configured)
+      publicKeyRef.current = config.publicKey
+
+      try {
+        await navigator.serviceWorker.register('/sw.js')
+      } catch {
+        if (!cancelled) setSupport('unsupported')
+        return
+      }
+      if (cancelled) return
+
+      setSupport('ok')
+      const perm = Notification.permission as PushPermission
+      setPermission(perm)
+
+      const reg = await navigator.serviceWorker.ready
+      const existing = await reg.pushManager.getSubscription()
+      if (cancelled) return
+      setSubscribed(Boolean(existing))
+
+      // Already granted but the device isn't registered (e.g. server pruned a
+      // stale row, or first grant on this browser): silently (re)subscribe.
+      if (perm === 'granted' && config.configured && !existing) {
+        void doSubscribe().catch(() => {})
+      }
+    }
+    void init()
+    return () => {
+      cancelled = true
+    }
+  }, [doSubscribe])
+
+  const enable = useCallback(async () => {
+    if (support === 'ios-needs-install' || support === 'unsupported') return
+    setBusy(true)
+    try {
+      const perm = (await Notification.requestPermission()) as PushPermission
+      setPermission(perm)
+      if (perm === 'granted') {
+        const ok = await doSubscribe()
+        toast[ok ? 'success' : 'error'](
+          ok
+            ? 'Уведомления включены на этом устройстве.'
+            : 'Не удалось завершить включение уведомлений.',
+        )
+      } else if (perm === 'denied') {
+        toast.error(
+          'Уведомления заблокированы. Включите их в настройках браузера.',
+        )
+      }
+    } catch {
+      toast.error('Не удалось включить уведомления.')
+    } finally {
+      setBusy(false)
+    }
+  }, [doSubscribe, support])
+
+  const loading = support === 'checking'
+  // When the server has no VAPID keys we cannot subscribe at all; treat the push
+  // requirement as satisfied so a misconfigured server never locks managers out.
+  const ready =
+    (support === 'ok' && permission === 'granted' && subscribed) ||
+    (support === 'ok' && !configured)
+
+  const value: NotificationState = {
+    support,
+    permission,
+    configured,
+    subscribed,
+    busy,
+    ready,
+    loading,
+    enable,
+  }
+
+  return (
+    <NotificationContext.Provider value={value}>
+      {children}
+    </NotificationContext.Provider>
+  )
+}
