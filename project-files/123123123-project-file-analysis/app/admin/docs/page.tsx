@@ -183,25 +183,48 @@ export default function AdminDocsPage() {
             <strong>менеджера</strong> для очереди, затем сохраните.
           </li>
           <li>
-            Скопируйте сниппет из диалога и вставьте его перед закрывающим тегом{' '}
-            <span className="font-mono">{'</body>'}</span> на вашем сайте.
+            Настройте <strong>first-party прокси</strong> на сайте клиента и
+            смонтируйте компонент/сниппет — оба шага есть в диалоге установки.
           </li>
         </ol>
-        <p>Сниппет выглядит так:</p>
+        <p>
+          <strong>First-party раздача.</strong> Чат грузится не напрямую с
+          сервера, а через путь{' '}
+          <span className="font-mono">/__support</span> на домене самого сайта —
+          поэтому в DevTools не видно сторонних запросов. Сначала добавьте
+          rewrite (Next.js):
+        </p>
         <DocCodeBlock
-          language="html"
-          code={`<script async src="${PANEL_URL}/livechat.js"
-  data-omnidesk-key="lc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-  data-omnidesk-title="Чат поддержки"
-  data-omnidesk-color="#2563eb"
-  data-omnidesk-greeting="Здравствуйте! Чем помочь?"></script>`}
+          language="javascript"
+          code={`// next.config.js
+module.exports = {
+  async rewrites() {
+    return [
+      {
+        source: '/__support/:path*',
+        destination: '${PANEL_URL}/:path*',
+      },
+    ]
+  },
+}`}
+        />
+        <p>Затем смонтируйте виджет с первопартийного пути:</p>
+        <DocCodeBlock
+          language="javascript"
+          code={`// app/layout.tsx
+import { SupportChat } from '@/components/support-chat'
+
+<SupportChat apiKey="lc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />`}
         />
         <p className="text-muted-foreground">
-          Обязателен только <span className="font-mono">data-omnidesk-key</span>.
-          Заголовок, цвет и приветствие подставляются автоматически, когда вы
-          настраиваете внешний вид. Необязательные параметры:{' '}
-          <span className="font-mono">data-omnidesk-name</span> и{' '}
-          <span className="font-mono">data-omnidesk-subject</span>.
+          Обязателен только <span className="font-mono">apiKey</span>. Цвет,
+          заголовок и приветствие подставляются автоматически из настроек
+          канала. Для обычного HTML-сайта вместо компонента вставьте перед{' '}
+          <span className="font-mono">{'</body>'}</span>:{' '}
+          <span className="font-mono break-all">
+            {'<script async src="/__support/widget.js" data-support-key="lc_...">'}
+          </span>
+          .
         </p>
       </Section>
 
@@ -213,17 +236,19 @@ export default function AdminDocsPage() {
       >
         <p>
           На карточке каждого онлайн-чата откройте иконку кисти, чтобы изменить
-          внешний вид виджета. Настройки зашиваются в сниппет как атрибуты{' '}
-          <span className="font-mono">data-omnidesk-*</span>.
+          внешний вид виджета. Всё применяется на лету по API-ключу, поэтому код
+          на сайте менять не нужно. При желании стартовые значения можно передать
+          пропсами компонента или атрибутами{' '}
+          <span className="font-mono">data-support-*</span>.
         </p>
         <div className="rounded-lg border border-border p-3">
-          <Field name="data-omnidesk-title">Заголовок панели чата.</Field>
-          <Field name="data-omnidesk-color">
+          <Field name="data-support-title">Заголовок панели чата.</Field>
+          <Field name="data-support-color">
             Фирменный цвет (hex, например{' '}
             <span className="font-mono">#2563eb</span>) для кнопки, шапки и
             исходящих сообщений.
           </Field>
-          <Field name="data-omnidesk-greeting">
+          <Field name="data-support-greeting">
             Необязательное приветственное облачко над кнопкой.
           </Field>
         </div>
@@ -311,39 +336,40 @@ export default function AdminDocsPage() {
       >
         <p>
           Глобальный объект —{' '}
-          <span className="font-mono">window.OmnideskLiveChat</span>. Вы можете
-          открывать и закрывать виджет, предзаполнять данные посетителя и
-          подписываться на события — даже до загрузки скрипта (подписки
-          ставятся в очередь).
+          <span className="font-mono">window.SupportChat</span> (старое имя{' '}
+          <span className="font-mono">window.OmnideskLiveChat</span> тоже
+          работает). Вы можете открывать и закрывать виджет, предзаполнять данные
+          посетителя и подписываться на события — даже до загрузки скрипта
+          (подписки ставятся в очередь).
         </p>
         <DocCodeBlock
           language="javascript"
           code={`// Открыть + предзаполнить (ничего не делает, пока виджет не подтверждён)
-OmnideskLiveChat.open({
+SupportChat.open({
   name: 'Иван Петров',
   subject: 'Вакансия: Курьер',
   message: 'Здравствуйте, хочу откликнуться...'
 })
 
-OmnideskLiveChat.close()`}
+SupportChat.close()`}
         />
         <p>События (безопасно подписываться из head страницы):</p>
         <DocCodeBlock
           language="javascript"
-          code={`OmnideskLiveChat.on('open',          () => {})
-OmnideskLiveChat.on('close',         () => {})
-OmnideskLiveChat.on('message_sent',  ({ body, count }) => {})
-OmnideskLiveChat.on('first_message', ({ body }) => {})`}
+          code={`SupportChat.on('open',          () => {})
+SupportChat.on('close',         () => {})
+SupportChat.on('message_sent',  ({ body, count }) => {})
+SupportChat.on('first_message', ({ body }) => {})`}
         />
         <p>Пример: своя кнопка плюс цели Яндекс.Метрики:</p>
         <DocCodeBlock
           language="html"
           code={`<script>
-  OmnideskLiveChat.on('open',          () => ym(XXXXXX, 'reachGoal', 'chat_open'))
-  OmnideskLiveChat.on('first_message', () => ym(XXXXXX, 'reachGoal', 'chat_first_message'))
+  SupportChat.on('open',          () => ym(XXXXXX, 'reachGoal', 'chat_open'))
+  SupportChat.on('first_message', () => ym(XXXXXX, 'reachGoal', 'chat_first_message'))
 </script>
 
-<button onclick="OmnideskLiveChat.open({ subject: 'Вакансия: ' + position })">
+<button onclick="SupportChat.open({ subject: 'Вакансия: ' + position })">
   Откликнуться
 </button>`}
         />
@@ -388,8 +414,13 @@ OmnideskLiveChat.on('first_message', ({ body }) => {})`}
         description={`Все обслуживаются с ${PANEL_DOMAIN}.`}
       >
         <div className="rounded-lg border border-border p-3">
-          <Field name="GET /livechat.js">
-            Встраиваемый скрипт виджета (монтируется из сниппета автоматически).
+          <Field name="GET /widget.js">
+            Встраиваемый скрипт виджета (нейтральное имя; старый путь{' '}
+            <span className="font-mono">/livechat.js</span> тоже работает).
+          </Field>
+          <Field name="GET /widget-sw.js">
+            Service worker посетителя (Web Push + установка приложения), отдаётся
+            с тем же first-party префиксом.
           </Field>
           <Field name="POST /api/livechat/ingest">
             Посетитель → панель: отправляет сообщение. Возвращает{' '}
@@ -400,9 +431,15 @@ OmnideskLiveChat.on('first_message', ({ body }) => {})`}
             рукопожатии помечает канал подключённым.
           </Field>
         </div>
+        <p className="text-muted-foreground">
+          При first-party установке всё это видно на сайте как{' '}
+          <span className="font-mono">/__support/...</span>, а прокси
+          перенаправляет на сервер. Прямые адреса на сервере:
+        </p>
         <DocCodeBlock
           language="text"
-          code={`Скрипт виджета   ${PANEL_URL}/livechat.js
+          code={`Скрипт виджета   ${PANEL_URL}/widget.js
+Service worker   ${PANEL_URL}/widget-sw.js
 Входящие (POST)  ${PANEL_URL}/api/livechat/ingest
 Поток (SSE)      ${PANEL_URL}/api/livechat/stream`}
         />

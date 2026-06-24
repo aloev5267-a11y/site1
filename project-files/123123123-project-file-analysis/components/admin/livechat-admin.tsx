@@ -447,66 +447,103 @@ function EditQueue({
   )
 }
 
-/** Plain HTML snippet — paste before </body>. */
-function htmlSnippet(apiKey: string, base: string): string {
-  return `<!-- Вставьте перед закрывающим тегом </body> -->
-<script async src="${base}/livechat.js" data-omnidesk-key="${apiKey}"></script>`
+// The neutral, brand-free first-party path the customer proxies to the server.
+const PROXY_PREFIX = '/__support'
+
+/** Step A for first-party installs: the Next.js rewrite that hides the server. */
+function nextRewriteSnippet(base: string): string {
+  return `// next.config.js — проксируем чат как часть своего домена.
+// После этого виджет и все его запросы идут на ваш домен (${PROXY_PREFIX}/...),
+// а адрес сервера чата нигде не виден.
+module.exports = {
+  async rewrites() {
+    return [
+      {
+        source: '${PROXY_PREFIX}/:path*',
+        destination: '${base}/:path*',
+      },
+    ]
+  },
+}`
 }
 
-/** Framework-agnostic React snippet (CRA, Vite, Remix, etc.). */
-function reactSnippet(apiKey: string, base: string): string {
-  return `// 1. Создайте файл components/OmnideskChat.jsx
+/** Next.js component install (first-party, recommended). */
+function nextSnippet(apiKey: string): string {
+  return `// 1. Создайте файл components/support-chat.tsx
+//    (готовый компонент можно скачать кнопкой ниже).
+// 2. Смонтируйте его один раз в app/layout.tsx внутри <body>:
+import { SupportChat } from '@/components/support-chat'
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="ru">
+      <body>
+        {children}
+        <SupportChat apiKey="${apiKey}" />
+      </body>
+    </html>
+  )
+}`
+}
+
+/** Framework-agnostic React component (CRA, Vite, Remix, etc.). */
+function reactSnippet(apiKey: string): string {
+  return `// components/SupportChat.jsx — смонтируйте один раз в корне приложения.
+// Требует rewrite/прокси с ${PROXY_PREFIX}/* на сервер чата (см. вкладку Next.js).
 import { useEffect } from 'react'
 
-export function OmnideskChat() {
+export function SupportChat() {
   useEffect(() => {
-    if (document.getElementById('omnidesk-widget')) return
+    if (document.getElementById('support-chat-loader')) return
     const s = document.createElement('script')
-    s.id = 'omnidesk-widget'
-    s.src = '${base}/livechat.js'
+    s.id = 'support-chat-loader'
+    s.src = '${PROXY_PREFIX}/widget.js'
     s.async = true
-    s.dataset.omnideskKey = '${apiKey}'
+    s.dataset.supportKey = '${apiKey}'
     document.body.appendChild(s)
   }, [])
   return null
+}`
 }
 
-// 2. Добавьте <OmnideskChat /> один раз в корневой компонент.`
-}
-
-/** Next.js (App Router) snippet using next/script. */
-function nextSnippet(apiKey: string, base: string): string {
-  return `// app/layout.tsx — добавьте <Script> внутри <body>
-import Script from 'next/script'
-
-<Script
-  src="${base}/livechat.js"
-  data-omnidesk-key="${apiKey}"
-  strategy="afterInteractive"
-/>`
+/** Plain HTML snippet — first-party path, paste before </body>. */
+function htmlSnippet(apiKey: string): string {
+  return `<!-- Вставьте перед закрывающим тегом </body>.
+     Требует прокси ${PROXY_PREFIX}/* → сервер чата (см. инструкцию). -->
+<script async src="${PROXY_PREFIX}/widget.js" data-support-key="${apiKey}"></script>`
 }
 
 /**
  * Framework-aware install snippets. Everything visual (colours, texts, position,
  * on/off) is controlled from the admin and fetched live by the API key, so the
  * snippet only ever carries the key — installing once is enough, forever.
+ *
+ * All variants load from a first-party `/__support` path so the chat appears to
+ * be served by the customer's own domain — nothing reveals the chat server.
  */
 function FrameworkTabs({ apiKey, base }: { apiKey: string; base: string }) {
   return (
-    <Tabs defaultValue="html" className="gap-2">
+    <Tabs defaultValue="next" className="gap-2">
       <TabsList className="w-full">
-        <TabsTrigger value="html">HTML</TabsTrigger>
-        <TabsTrigger value="react">React</TabsTrigger>
         <TabsTrigger value="next">Next.js</TabsTrigger>
+        <TabsTrigger value="react">React</TabsTrigger>
+        <TabsTrigger value="html">HTML</TabsTrigger>
       </TabsList>
-      <TabsContent value="html">
-        <CopyField value={htmlSnippet(apiKey, base)} />
+      <TabsContent value="next" className="flex flex-col gap-2">
+        <span className="text-xs text-muted-foreground">
+          Шаг 1. Добавьте прокси в <span className="font-mono">next.config.js</span>:
+        </span>
+        <CopyField value={nextRewriteSnippet(base)} />
+        <span className="text-xs text-muted-foreground">
+          Шаг 2. Смонтируйте компонент:
+        </span>
+        <CopyField value={nextSnippet(apiKey)} />
       </TabsContent>
       <TabsContent value="react">
-        <CopyField value={reactSnippet(apiKey, base)} />
+        <CopyField value={reactSnippet(apiKey)} />
       </TabsContent>
-      <TabsContent value="next">
-        <CopyField value={nextSnippet(apiKey, base)} />
+      <TabsContent value="html">
+        <CopyField value={htmlSnippet(apiKey)} />
       </TabsContent>
     </Tabs>
   )
@@ -538,36 +575,34 @@ function Instructions({
       </li>
       <li className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">
-          3. Загрузите файл для установки приложения
+          3. Скачайте готовый React-компонент (необязательно)
         </span>
         <p className="text-xs text-muted-foreground">
-          Чтобы посетитель мог установить ваш сайт как приложение (это требуется
-          перед отправкой первого сообщения), скачайте файл по ссылке ниже и
-          положите его в <span className="font-mono">корень</span> сайта — он
-          должен открываться по адресу{' '}
-          <span className="font-mono break-all">ваш-сайт.com/omnidesk-sw.js</span>
-          . Это пустой технический файл, он не меняет работу сайта.
+          Для Next.js/React можно не писать компонент вручную — скачайте готовый{' '}
+          <span className="font-mono break-all">support-chat.tsx</span> и
+          положите его в <span className="font-mono">components/</span>. Он уже
+          содержит подсказку по настройке прокси.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <a
-            href={`${base.replace(/\/$/, '')}/omnidesk-sw.js`}
-            download="omnidesk-sw.js"
+            href={`${base.replace(/\/$/, '')}/integrations/support-chat.tsx`}
+            download="support-chat.tsx"
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
           >
             <Download className="size-3.5" />
-            Скачать omnidesk-sw.js
+            Скачать support-chat.tsx
           </a>
         </div>
-        <CopyField value={`${base.replace(/\/$/, '')}/omnidesk-sw.js`} />
       </li>
       <li className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">
           4. Готово — дальше всё меняется из админки
         </span>
         <p className="text-xs text-muted-foreground">
-          Цвет, тексты, позиция, аватар, быстрые ответы и даже включение/
-          выключение виджета настраиваются здесь, в панели — менять код на сайте
-          больше никогда не нужно.
+          Установка приложения и push-уведомления работают автоматически через
+          прокси — отдельный файл на сайт класть не нужно. Цвет, тексты, позиция,
+          аватар, быстрые ответы и включение/выключение виджета настраиваются
+          здесь, в панели — менять код на сайте больше никогда не нужно.
         </p>
       </li>
     </ol>
