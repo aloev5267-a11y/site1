@@ -691,6 +691,13 @@
 
   var ICON_MESSAGE =
     '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>'
+  // Solid, friendly chat glyph for the launcher (filled reads as more premium /
+  // tactile than a thin outline at small sizes). Two dots hint at a live reply.
+  var ICON_LAUNCHER =
+    '<svg width="27" height="27" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3.2c-5.08 0-9.2 3.4-9.2 7.6 0 2.36 1.3 4.47 3.34 5.88.18.12.27.33.24.54l-.36 2.46c-.08.55.5.95.98.67l2.9-1.68c.16-.1.36-.13.55-.09.82.18 1.68.27 2.56.27 5.08 0 9.2-3.4 9.2-7.6S17.08 3.2 12 3.2Z"/><circle cx="9" cy="11" r="1.15" fill="#fff"/><circle cx="15" cy="11" r="1.15" fill="#fff"/></svg>'
+  // Larger close glyph shown on the launcher itself while the panel is open.
+  var ICON_LAUNCHER_CLOSE =
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
   var ICON_CLOSE =
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
   var ICON_SEND =
@@ -844,31 +851,50 @@
 
     // Launcher wrapper holds the button + an animated pulse ring behind it.
     var launcher = document.createElement('div')
-    launcher.style.cssText = 'position:relative;width:60px;height:60px;pointer-events:auto'
+    launcher.style.cssText = 'position:relative;width:62px;height:62px;pointer-events:auto'
 
+    // Soft ambient halo behind the launcher — a calm, static brand glow that
+    // adds depth without the old attention-grabbing pulse animation.
     var ring = document.createElement('span')
     ring.setAttribute('aria-hidden', 'true')
     ring.style.cssText =
-      'position:absolute;inset:0;border-radius:50%;background:' +
+      'position:absolute;inset:-7px;border-radius:50%;background:' +
       primary +
-      ';opacity:.5;animation:csw-ring 2.4s ease-out infinite;pointer-events:none'
+      ';opacity:.16;filter:blur(11px);pointer-events:none;transition:opacity .25s ease'
 
     var button = document.createElement('button')
-    button.setAttribute('aria-label', 'Открыть ��ат')
+    button.setAttribute('aria-label', 'Открыть чат')
+    // Layered soft shadow (no harsh single drop) + calm scale on hover. The old
+    // rotate-on-hover gimmick is gone for a more premium, restrained feel.
+    var LAUNCHER_SHADOW =
+      '0 12px 26px -8px ' + tint(primary, '73') + ',0 6px 14px -8px rgba(15,23,42,.28)'
+    var LAUNCHER_SHADOW_HOVER =
+      '0 18px 36px -8px ' + tint(primary, '94') + ',0 10px 20px -10px rgba(15,23,42,.34)'
     button.style.cssText =
-      'position:relative;width:60px;height:60px;border-radius:50%;border:none;cursor:pointer;color:#fff;box-shadow:0 8px 24px ' +
-      tint(primary, '66') +
-      ',0 2px 6px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease'
-    button.innerHTML = ICON_MESSAGE
+      'position:relative;width:62px;height:62px;border-radius:50%;border:none;cursor:pointer;color:#fff;-webkit-tap-highlight-color:transparent;box-shadow:' +
+      LAUNCHER_SHADOW +
+      ';display:flex;align-items:center;justify-content:center;transition:transform .22s cubic-bezier(.34,1.4,.5,1),box-shadow .22s ease'
+    button.innerHTML = ICON_LAUNCHER
+    // Swap the launcher glyph between chat ⇄ close so the button doubles as the
+    // open/close control, matching modern messenger widgets.
+    function setLauncherIcon(open) {
+      button.innerHTML = open ? ICON_LAUNCHER_CLOSE : ICON_LAUNCHER
+    }
     button.addEventListener('mouseenter', function () {
-      button.style.transform = 'scale(1.08) rotate(-4deg)'
-      button.style.boxShadow =
-        '0 12px 32px ' + tint(primary, '80') + ',0 3px 8px rgba(0,0,0,.16)'
+      button.style.transform = 'scale(1.06)'
+      button.style.boxShadow = LAUNCHER_SHADOW_HOVER
+      ring.style.opacity = '.3'
     })
     button.addEventListener('mouseleave', function () {
-      button.style.transform = 'scale(1) rotate(0deg)'
-      button.style.boxShadow =
-        '0 8px 24px ' + tint(primary, '66') + ',0 2px 6px rgba(0,0,0,.12)'
+      button.style.transform = 'scale(1)'
+      button.style.boxShadow = LAUNCHER_SHADOW
+      ring.style.opacity = '.16'
+    })
+    button.addEventListener('mousedown', function () {
+      button.style.transform = 'scale(.94)'
+    })
+    button.addEventListener('mouseup', function () {
+      button.style.transform = 'scale(1.06)'
     })
     // Small "online" pip on the launcher — a subtle, always-visible cue that
     // live support is available (raises trust + draws the eye). White ring so
@@ -957,18 +983,19 @@
     panel.style.cssText =
       'pointer-events:auto;display:none;flex-direction:column;width:384px;max-width:calc(100vw - 32px);height:600px;max-height:80vh;max-height:80dvh;background:#fff;border:1px solid ' +
       BORDER +
-      ';border-radius:24px;overflow:hidden;box-shadow:0 40px 80px -16px rgba(15,23,42,.32),0 12px 28px -12px rgba(15,23,42,.18),0 0 0 1px rgba(15,23,42,.05);margin-bottom:16px;transform-origin:bottom right'
+      ';border-radius:26px;overflow:hidden;box-shadow:0 32px 64px -20px rgba(15,23,42,.26),0 12px 24px -12px rgba(15,23,42,.12),0 0 0 1px rgba(15,23,42,.04);margin-bottom:18px;transform-origin:bottom right'
 
     /* Header — brand gradient for a richer, more technological feel. */
     var header = document.createElement('div')
     header.style.cssText =
-      'position:relative;padding:18px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;overflow:hidden'
+      'position:relative;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;overflow:hidden'
 
-    // Decorative top-right sheen for depth (purely cosmetic, no blur → cheap).
+    // Very subtle top highlight for a hint of depth — far calmer than the old
+    // oversized white radial blob, in line with a restrained premium look.
     var headerSheen = document.createElement('span')
     headerSheen.setAttribute('aria-hidden', 'true')
     headerSheen.style.cssText =
-      'position:absolute;top:-60%;right:-10%;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 70%);pointer-events:none'
+      'position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,0) 55%);pointer-events:none'
     header.appendChild(headerSheen)
 
     var headerLeft = document.createElement('div')
@@ -1073,7 +1100,7 @@
     /* Composer */
     var form = document.createElement('form')
     form.style.cssText =
-      'display:flex;gap:8px;padding:16px;border-top:1px solid ' +
+      'display:flex;align-items:center;gap:10px;padding:14px 16px;border-top:1px solid ' +
       BORDER +
       ';background:#fff;flex-shrink:0'
     var input = document.createElement('input')
@@ -1083,24 +1110,28 @@
     // font-size MUST be >=16px: iOS Safari force-zooms the page when a focused
     // input has a smaller font, which is jarring inside the widget.
     input.style.cssText =
-      'flex:1;border:1px solid transparent;border-radius:14px;padding:12px 16px;font-size:16px;outline:none;background:' +
+      'flex:1;min-width:0;border:1px solid ' +
+      BORDER +
+      ';border-radius:22px;padding:12px 16px;font-size:16px;outline:none;background:' +
       MUTED_BG +
       ';color:' +
       FG +
-      ';transition:border-color .15s ease,box-shadow .15s ease'
+      ';transition:border-color .15s ease,box-shadow .15s ease,background .15s ease'
     input.addEventListener('focus', function () {
       input.style.borderColor = primary
+      input.style.background = '#fff'
       input.style.boxShadow = '0 0 0 3px ' + primary + '22'
     })
     input.addEventListener('blur', function () {
-      input.style.borderColor = 'transparent'
+      input.style.borderColor = BORDER
+      input.style.background = MUTED_BG
       input.style.boxShadow = 'none'
     })
     var sendBtn = document.createElement('button')
     sendBtn.type = 'submit'
     sendBtn.setAttribute('aria-label', 'Отправить')
     sendBtn.style.cssText =
-      'border:none;border-radius:14px;width:48px;flex-shrink:0;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .18s ease,filter .15s ease'
+      'border:none;border-radius:50%;width:46px;height:46px;align-self:center;flex-shrink:0;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .18s ease,filter .15s ease'
     sendBtn.addEventListener('mouseenter', function () {
       sendBtn.style.transform = 'translateY(-2px) scale(1.04)'
       sendBtn.style.filter = 'brightness(1.06)'
@@ -1220,19 +1251,17 @@
       var el = document.createElement('div')
       el.className = 'csw-bubble-in'
       el.style.cssText =
-        'max-width:80%;padding:11px 15px;font-size:14px;line-height:1.5;word-wrap:break-word;overflow-wrap:anywhere;border-radius:20px;' +
+        'max-width:82%;padding:10px 14px;font-size:14px;line-height:1.5;word-wrap:break-word;overflow-wrap:anywhere;border-radius:18px;' +
         (mine
-          ? 'background:linear-gradient(135deg,' +
-            shade(primary, 12) +
-            ',' +
-            shade(primary, -10) +
-            ');color:#fff;border-bottom-right-radius:6px;box-shadow:0 4px 14px ' +
-            tint(primary, '40')
+          ? 'background:' +
+            primary +
+            ';color:#fff;border-bottom-right-radius:6px;box-shadow:0 3px 10px -2px ' +
+            tint(primary, '38')
           : 'background:#fff;color:' +
             FG +
             ';border:1px solid ' +
             BORDER +
-            ';border-bottom-left-radius:6px;box-shadow:0 2px 8px rgba(15,23,42,.06)')
+            ';border-bottom-left-radius:6px;box-shadow:0 1px 3px rgba(15,23,42,.05)')
       if (!mine && msg.author) {
         var who = document.createElement('div')
         who.style.cssText =
@@ -1437,12 +1466,10 @@
       // Colors. The header uses a subtle brand gradient (top-lighter →
       // bottom-base) for depth; everything else stays on the flat brand colour.
       header.style.background =
-        'linear-gradient(135deg,' +
-        tint(primary, 'ff') +
+        'linear-gradient(160deg,' +
+        shade(primary, 8) +
         ' 0%,' +
         primary +
-        ' 60%,' +
-        shade(primary, -12) +
         ' 100%)'
       // Launcher + send share a soft brand gradient (lighter top-left →
       // slightly darker bottom-right) for a tactile, dimensional look instead
@@ -1514,11 +1541,11 @@
         teaser = document.createElement('button')
         teaser.type = 'button'
         teaser.style.cssText =
-          'pointer-events:auto;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:240px;margin-bottom:12px;padding:13px 16px;border:1px solid ' +
+          'pointer-events:auto;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:250px;margin-bottom:14px;padding:13px 16px;border:1px solid ' +
           BORDER +
-          ';border-radius:16px;border-bottom-right-radius:5px;background:#fff;color:' +
+          ';border-radius:18px;border-bottom-right-radius:6px;background:#fff;color:' +
           FG +
-          ';box-shadow:0 12px 32px -8px rgba(15,23,42,.22),0 0 0 1px rgba(15,23,42,.03);cursor:pointer;text-align:left;font-size:14px;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease;animation:csw-pop .3s cubic-bezier(.21,1.02,.73,1) both'
+          ';box-shadow:0 16px 36px -14px rgba(15,23,42,.22),0 2px 6px -2px rgba(15,23,42,.08);cursor:pointer;text-align:left;font-size:14px;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease;animation:csw-pop .3s cubic-bezier(.21,1.02,.73,1) both'
         teaser._title = document.createElement('span')
         teaser._title.style.cssText = 'font-weight:600'
         teaser._sub = document.createElement('span')
@@ -1767,6 +1794,7 @@
       // Show the welcome bubble on first open if the thread is empty.
       if (!hasRealMessages) renderWelcome()
       button.setAttribute('aria-label', 'Свернуть чат')
+      setLauncherIcon(true)
       input.focus()
       chat.emit('open', {})
       // Tell the inbox the visitor is actively looking at the chat (no-op until
@@ -1786,6 +1814,7 @@
       // host site) and prevents reopening because isOpen never flips back.
       isOpen = false
       button.setAttribute('aria-label', 'Открыть чат')
+      setLauncherIcon(false)
       // Return focus to the launcher for keyboard users — but only if focus was
       // inside the panel, so a mouse/touch close doesn't yank focus or scroll.
       try {
@@ -2769,6 +2798,7 @@
       activeConfirmed = true
       launcher.style.display = 'block'
       isOpen = true
+      setLauncherIcon(true)
       panel.style.display = 'flex'
       statusText.textContent = defaultStatusLine()
       statusDot.style.background = '#4ade80'
