@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition } from 'react'
 import {
   Check,
   Copy,
-  Download,
   Loader2,
   MessageCircle,
   Plus,
@@ -31,14 +30,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import type { LivechatAdminChannel, LivechatWidgetAppearance } from '@/lib/data'
+import type { LivechatAdminChannel } from '@/lib/data'
 import type { Manager } from '@/lib/types'
 
 /**
@@ -447,162 +440,43 @@ function EditQueue({
   )
 }
 
-// The neutral, brand-free first-party path the customer proxies to the server.
-const PROXY_PREFIX = '/__support'
-
-/** Step A for first-party installs: the Next.js rewrite that hides the server. */
-function nextRewriteSnippet(base: string): string {
-  return `// next.config.js — проксируем чат как часть своего домена.
-// После этого виджет и все его запросы идут на ваш домен (${PROXY_PREFIX}/...),
-// а адрес сервера чата нигде не виден.
-module.exports = {
-  async rewrites() {
-    return [
-      {
-        source: '${PROXY_PREFIX}/:path*',
-        destination: '${base}/:path*',
-      },
-    ]
-  },
-}`
-}
-
-/** Next.js component install (first-party, recommended). */
-function nextSnippet(apiKey: string): string {
-  return `// 1. Создайте файл components/support-chat.tsx
-//    (готовый компонент можно скачать кнопкой ниже).
-// 2. Смонтируйте его один раз в app/layout.tsx внутри <body>:
-import { SupportChat } from '@/components/support-chat'
-
-export default function RootLayout({ children }) {
-  return (
-    <html lang="ru">
-      <body>
-        {children}
-        <SupportChat apiKey="${apiKey}" />
-      </body>
-    </html>
-  )
-}`
-}
-
-/** Framework-agnostic React component (CRA, Vite, Remix, etc.). */
-function reactSnippet(apiKey: string): string {
-  return `// components/SupportChat.jsx — смонтируйте один раз в корне приложения.
-// Требует rewrite/прокси с ${PROXY_PREFIX}/* на сервер чата (см. вкладку Next.js).
-import { useEffect } from 'react'
-
-export function SupportChat() {
-  useEffect(() => {
-    if (document.getElementById('support-chat-loader')) return
-    const s = document.createElement('script')
-    s.id = 'support-chat-loader'
-    s.src = '${PROXY_PREFIX}/widget.js'
-    s.async = true
-    s.dataset.supportKey = '${apiKey}'
-    document.body.appendChild(s)
-  }, [])
-  return null
-}`
-}
-
-/** Plain HTML snippet — first-party path, paste before </body>. */
-function htmlSnippet(apiKey: string): string {
-  return `<!-- Вставьте перед закрывающим тегом </body>.
-     Требует прокси ${PROXY_PREFIX}/* → сервер чата (см. инструкцию). -->
-<script async src="${PROXY_PREFIX}/widget.js" data-support-key="${apiKey}"></script>`
-}
-
 /**
- * Framework-aware install snippets. Everything visual (colours, texts, position,
- * on/off) is controlled from the admin and fetched live by the API key, so the
- * snippet only ever carries the key — installing once is enough, forever.
- *
- * All variants load from a first-party `/__support` path so the chat appears to
- * be served by the customer's own domain — nothing reveals the chat server.
+ * The one and only install snippet: a single async <script> tag that loads the
+ * widget straight from the panel and carries only the API key. It works on any
+ * site (HTML, React, Next.js, anything) and on any domain. Everything visual
+ * (colours, texts, position, on/off) is controlled from the admin and fetched
+ * live by the key, so installing once is enough — forever.
  */
-function FrameworkTabs({ apiKey, base }: { apiKey: string; base: string }) {
-  return (
-    <Tabs defaultValue="next" className="gap-2">
-      <TabsList className="w-full">
-        <TabsTrigger value="next">Next.js</TabsTrigger>
-        <TabsTrigger value="react">React</TabsTrigger>
-        <TabsTrigger value="html">HTML</TabsTrigger>
-      </TabsList>
-      <TabsContent value="next" className="flex flex-col gap-2">
-        <span className="text-xs text-muted-foreground">
-          Шаг 1. Добавьте прокси в <span className="font-mono">next.config.js</span>:
-        </span>
-        <CopyField value={nextRewriteSnippet(base)} />
-        <span className="text-xs text-muted-foreground">
-          Шаг 2. Смонтируйте компонент:
-        </span>
-        <CopyField value={nextSnippet(apiKey)} />
-      </TabsContent>
-      <TabsContent value="react">
-        <CopyField value={reactSnippet(apiKey)} />
-      </TabsContent>
-      <TabsContent value="html">
-        <CopyField value={htmlSnippet(apiKey)} />
-      </TabsContent>
-    </Tabs>
-  )
+function htmlSnippet(apiKey: string, base: string): string {
+  return `<script async src="${base.replace(/\/$/, '')}/widget.js" data-support-key="${apiKey}"></script>`
 }
 
-function Instructions({
-  apiKey,
-  base,
-}: {
-  apiKey: string
-  base: string
-  // Kept for call-site compatibility; appearance is now controlled from the
-  // admin and fetched live by key, so it never needs to live in the snippet.
-  appearance?: LivechatWidgetAppearance
-}) {
+function Instructions({ apiKey, base }: { apiKey: string; base: string }) {
   return (
     <ol className="flex flex-col gap-3 text-sm">
       <li className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">
-          1. Скопируйте API-ключ
+          1. Скопируйте этот код и вставьте его в HTML страницы — лучше всего
+          перед закрывающим тегом{' '}
+          <span className="font-mono">{'</body>'}</span>
         </span>
-        <CopyField value={apiKey} />
-      </li>
-      <li className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">
-          2. Выберите свой стек и вставьте код
-        </span>
-        <FrameworkTabs apiKey={apiKey} base={base} />
-      </li>
-      <li className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">
-          3. Скачайте готовый React-компонент (необязательно)
-        </span>
+        <CopyField value={htmlSnippet(apiKey, base)} />
         <p className="text-xs text-muted-foreground">
-          Для Next.js/React можно не писать компонент вручную — скачайте готовый{' '}
-          <span className="font-mono break-all">support-chat.tsx</span> и
-          положите его в <span className="font-mono">components/</span>. Он уже
-          содержит подсказку по настройке прокси.
+          Подходит для любого сайта и любого фреймворка. В React/Next.js
+          добавьте тот же тег в разметку (например, в{' '}
+          <span className="font-mono">app/layout.tsx</span> внутри{' '}
+          <span className="font-mono">{'<body>'}</span>).
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <a
-            href={`${base.replace(/\/$/, '')}/integrations/support-chat.tsx`}
-            download="support-chat.tsx"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
-          >
-            <Download className="size-3.5" />
-            Скачать support-chat.tsx
-          </a>
-        </div>
       </li>
       <li className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">
-          4. Готово — дальше всё меняется из админки
+          2. Готово — дальше всё меняется из админки
         </span>
         <p className="text-xs text-muted-foreground">
-          Установка приложения и push-уведомления работают автоматически через
-          прокси — отдельный файл на сайт класть не нужно. Цвет, тексты, позиция,
-          аватар, быстрые ответы и включение/выключение виджета настраиваются
-          здесь, в панели — менять код на сайте больше никогда не нужно.
+          Цвет, тексты, позиция, аватар, быстрые ответы, рабочие часы и
+          включение/выключение виджета настраиваются здесь, в панели, и
+          применяются на сайте автоматически — менять код на сайте больше
+          никогда не нужно.
         </p>
       </li>
     </ol>

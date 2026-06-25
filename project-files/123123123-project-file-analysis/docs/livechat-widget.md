@@ -16,7 +16,7 @@ Click **Add live chat** and fill in:
 | Field | Required | Meaning |
 | --- | --- | --- |
 | **Name** | no (defaults to `Live chat`) | Internal label shown on the admin card. |
-| **Website domain** | yes | The site the widget runs on. Scopes the allowed request origin (see §5). |
+| **Website domain** | no | Informational only — shown on the admin card. The widget works on any domain; access is controlled by the API key (see §5). |
 | **Manager queue** | yes (≥1) | Ordered list of managers. The selection order **is** the round-robin order; the first manager is the channel owner. |
 
 On save the server (`createLivechatAction`) mints a public API key (`lc_…`) and
@@ -50,32 +50,32 @@ them (`components/admin/livechat-defaults.tsx`).
 **Live updates without reinstalling the snippet:** the widget polls
 `GET /api/livechat/config?key=…` every ~15s. The endpoint returns the resolved
 per-site config plus an authoritative, server-computed `offHours` flag (from the
-site's own working hours via `isOffHoursFor`). The `data-omnidesk-*` attributes
-below are now only bootstrap fallbacks used until the first config poll lands.
+site's own working hours via `isOffHoursFor`). The snippet carries only the key —
+all look & feel comes from this config poll.
 
 ---
 
 ## 2. Getting the embed code
 
-Copy the single async script tag served from `/livechat.js`:
+There is one install method: a single async script tag. Paste it into the page
+HTML (ideally before `</body>`). It works on any site and any framework — for
+React/Next.js add the same tag to your markup (e.g. `app/layout.tsx` inside
+`<body>`).
 
 ```html
-<script async src="https://charter-panel.com/livechat.js"
-  data-omnidesk-key="lc_xxx"
-  data-omnidesk-title="Чат поддержки"
-  data-omnidesk-color="#2563eb"
-  data-omnidesk-greeting="Здравствуйте! Чем помочь?"></script>
+<script async src="https://charter-panel.com/widget.js"
+  data-support-key="lc_xxx"></script>
 ```
 
-Only `data-omnidesk-key` is required. Optional extras: `data-omnidesk-name`,
-`data-omnidesk-subject`. The script auto-mounts a floating launcher + chat panel
-(no iframe) and talks to two endpoints:
+Only `data-support-key` is required (the older `data-omnidesk-key` name is still
+accepted for already-deployed snippets). The script auto-mounts a floating
+launcher + chat panel (no iframe) and talks to two endpoints:
 
 - `POST /api/livechat/ingest` — visitor → panel sends a message.
 - `GET  /api/livechat/stream` — Server-Sent Events: history replay + agent
   replies in realtime.
 
-Both authenticate with the **API key** and the request **Origin**.
+Both authenticate with the channel **API key**.
 
 ---
 
@@ -90,7 +90,7 @@ isLivechatConnected(channel) => channel.status === 'connected'
 
 - **`pending`** — created in the admin, the widget has never connected from the
   live site yet. Shown in the admin as **Not integrated**.
-- **`connected`** — the widget successfully handshaked from an allowed origin.
+- **`connected`** — the widget successfully handshaked from the installed site.
   Shown as **Active**.
 
 The `pending → connected` transition is automatic: when the widget opens its
@@ -103,8 +103,8 @@ stream from the installed page, `app/api/livechat/stream/route.ts` calls
 
 ## 4. Availability — the chat is always reachable
 
-The widget renders whenever the API key resolves to an existing channel and the
-origin is allowed. Deleting **managers** never deletes the chat:
+The widget renders whenever the API key resolves to an existing channel.
+Deleting **managers** never deletes the chat:
 
 - `channels.manager_id` is `ON DELETE SET NULL` (migration `008`), so a live-chat
   channel outlives its owner.
@@ -122,30 +122,32 @@ Assign a manager again and routing resumes immediately.
 
 ---
 
-## 5. Origin restriction
+## 5. Access model
 
-`originAllowed` (`lib/livechat.ts`):
-
-- If **domain is set**, the request Origin must equal it or be a subdomain.
-- If **domain is empty**, any origin is allowed (staging / multi-domain).
+`originAllowed` (`lib/livechat.ts`) always returns `true`: the channel **API
+key** is the access boundary, so the same snippet works on any domain
+(production, staging, localhost) with no per-site configuration. The key is a
+public channel identifier whose only capability is posting to its own channel.
+The channel `domain` field is informational only and never blocks requests.
 
 ---
 
-## 6. Programmatic API & analytics events
+## 6. Optional control API & analytics events
+
+The widget works with zero code. Optionally, the global `window.SupportChat`
+lets you open/close it and hook analytics:
 
 ```js
-OmnideskLiveChat.open({ name, subject, message }) // open + prefill
-OmnideskLiveChat.close()
-OmnideskLiveChat.on('open',          () => {})
-OmnideskLiveChat.on('close',         () => {})
-OmnideskLiveChat.on('message_sent',  ({ body, count }) => {})
-OmnideskLiveChat.on('first_message', ({ body }) => {})
+SupportChat.open({ name, subject, message }) // open + prefill
+SupportChat.close()
+SupportChat.on('open',          () => {})
+SupportChat.on('close',         () => {})
+SupportChat.on('message_sent',  ({ body, count }) => {})
+SupportChat.on('first_message', ({ body }) => {})
 ```
 
 Subscriptions made before the widget mounts are queued and flushed once it is
-ready, so calling `.on(...)` from `<head>` is safe. The lower-level
-`OmnideskLiveChat.create({ ... })` accepts `onHistory`, `onMessage`, `onStatus`,
-and `onActive(active)` callbacks for a fully custom UI.
+ready, so calling `.on(...)` from `<head>` is safe.
 
 ---
 

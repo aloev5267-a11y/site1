@@ -158,9 +158,9 @@ export default function AdminDocsPage() {
           посетителю.
         </p>
         <p>
-          Каждая интеграция — это один <strong>канал</strong>, привязанный к
-          одному публичному API-ключу и одному домену сайта. Виджет общается с
-          двумя эндпоинтами на{' '}
+          Каждая интеграция — это один <strong>канал</strong> с одним публичным
+          API-ключом. Ключ — это всё, что нужно: один и тот же сниппет работает
+          на любом домене. Виджет общается с двумя эндпоинтами на{' '}
           <span className="font-mono text-foreground">{PANEL_DOMAIN}</span>:
           входящий эндпоинт для сообщений посетителей и поток Server-Sent Events
           для ответов и истории.
@@ -179,52 +179,31 @@ export default function AdminDocsPage() {
             <strong>Добавить онлайн-чат</strong>.
           </li>
           <li>
-            Укажите <strong>домен сайта</strong> и выберите хотя бы одного{' '}
-            <strong>менеджера</strong> для очереди, затем сохраните.
+            Выберите хотя бы одного <strong>менеджера</strong> для очереди (поле{' '}
+            <strong>домен сайта</strong> необязательно — только для справки),
+            затем сохраните.
           </li>
           <li>
-            Настройте <strong>first-party прокси</strong> на сайте клиента и
-            смонтируйте компонент/сниппет — оба шага есть в диалоге установки.
+            Скопируйте <strong>один сниппет</strong> из диалога установки и
+            вставьте его на сайт.
           </li>
         </ol>
         <p>
-          <strong>First-party раздача.</strong> Чат грузится не напрямую с
-          сервера, а через путь{' '}
-          <span className="font-mono">/__support</span> на домене самого сайта —
-          поэтому в DevTools не видно сторонних запросов. Сначала добавьте
-          rewrite (Next.js):
+          <strong>Один способ установки.</strong> На любой сайт и в любой
+          фреймворк добавляется один и тот же тег — вставьте его в HTML страницы,
+          лучше всего перед закрывающим{' '}
+          <span className="font-mono">{'</body>'}</span>:
         </p>
         <DocCodeBlock
-          language="javascript"
-          code={`// next.config.js
-module.exports = {
-  async rewrites() {
-    return [
-      {
-        source: '/__support/:path*',
-        destination: '${PANEL_URL}/:path*',
-      },
-    ]
-  },
-}`}
-        />
-        <p>Затем смонтируйте виджет с первопартийного пути:</p>
-        <DocCodeBlock
-          language="javascript"
-          code={`// app/layout.tsx
-import { SupportChat } from '@/components/support-chat'
-
-<SupportChat apiKey="lc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />`}
+          language="html"
+          code={`<script async src="${PANEL_URL}/widget.js" data-support-key="lc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"></script>`}
         />
         <p className="text-muted-foreground">
-          Обязателен только <span className="font-mono">apiKey</span>. Цвет,
-          заголовок и приветствие подставляются автоматически из настроек
-          канала. Для обычного HTML-сайта вместо компонента вставьте перед{' '}
-          <span className="font-mono">{'</body>'}</span>:{' '}
-          <span className="font-mono break-all">
-            {'<script async src="/__support/widget.js" data-support-key="lc_...">'}
-          </span>
-          .
+          В сниппете нужен только ключ. В React/Next.js добавьте тот же тег в
+          разметку (например, в <span className="font-mono">app/layout.tsx</span>{' '}
+          внутри <span className="font-mono">{'<body>'}</span>). Цвет, заголовок,
+          приветствие и всё остальное подставляются автоматически из настроек
+          канала.
         </p>
       </Section>
 
@@ -237,18 +216,16 @@ import { SupportChat } from '@/components/support-chat'
         <p>
           На карточке каждого онлайн-чата откройте иконку кисти, чтобы изменить
           внешний вид виджета. Всё применяется на лету по API-ключу, поэтому код
-          на сайте менять не нужно. При желании стартовые значения можно передать
-          пропсами компонента или атрибутами{' '}
-          <span className="font-mono">data-support-*</span>.
+          на сайте менять не нужно — сниппет несёт только ключ.
         </p>
         <div className="rounded-lg border border-border p-3">
-          <Field name="data-support-title">Заголовок панели чата.</Field>
-          <Field name="data-support-color">
+          <Field name="Заголовок">Заголовок панели чата.</Field>
+          <Field name="Цвет">
             Фирменный цвет (hex, например{' '}
             <span className="font-mono">#2563eb</span>) для кнопки, шапки и
             исходящих сообщений.
           </Field>
-          <Field name="data-support-greeting">
+          <Field name="Приветствие">
             Необязательное приветственное облачко над кнопкой.
           </Field>
         </div>
@@ -332,15 +309,15 @@ import { SupportChat } from '@/components/support-chat'
         id="api"
         icon={Code2}
         title="JavaScript API и события"
-        description="Открывайте виджет программно и подключайтесь к аналитике."
+        description="Открывайте виджет программно и подключайтесь �� аналитике."
       >
         <p>
           Глобальный объект —{' '}
-          <span className="font-mono">window.SupportChat</span> (старое имя{' '}
-          <span className="font-mono">window.OmnideskLiveChat</span> тоже
-          работает). Вы можете открывать и закрывать виджет, предзаполнять данные
-          посетителя и подписываться на события — даже до загрузки скрипта
-          (подписки ставятся в очередь).
+          <span className="font-mono">window.SupportChat</span>. Вы можете
+          открывать и закрывать виджет, предзаполнять данные посетителя и
+          подписываться на события — даже до загрузки скрипта (подписки ставятся
+          в очередь). Это необязательно: виджет работает и без единой строки
+          кода.
         </p>
         <DocCodeBlock
           language="javascript"
@@ -382,23 +359,18 @@ SupportChat.on('first_message', ({ body }) => {})`}
         description="Как запросы аутентифицируются и ограничиваются."
       >
         <p>
-          Оба эндпоинта аутентифицируются по <strong>API-ключу</strong> канала и
-          заголовку <strong>Origin</strong> запроса — без cookie сессии, потому
-          что виджет работает кросс-доменно на вашем сайте.
+          Эндпоинты аутентифицируются по <strong>API-ключу</strong> канала — без
+          cookie сессии, потому что виджет работает кросс-доменно на вашем сайте.
         </p>
         <ul className="ml-4 list-disc space-y-1.5 marker:text-muted-foreground">
           <li>
-            Если на канале <strong>задан домен</strong>, Origin запроса должен
-            совпадать с ним или быть его поддоменом.
+            API-ключ — это граница доступа: он позволяет писать только в свой
+            канал. Виджет работает на любом домене с этим ключом, никакой
+            настройки origin не требуется.
           </li>
           <li>
-            Если <strong>домен пуст</strong>, разрешены любые origin (удобно для
-            стейджинга или мульти-доменных сценариев).
-          </li>
-          <li>
-            API-ключ — это публичный идентификатор канала, а не секрет; его
-            единственная возможность — писать в этот канал с разрешённого origin.
-            Держите список разрешённых origin строгим.
+            Ключ — публичный идентификатор канала, а не секрет. Его единственная
+            возможность — отправлять сообщения в этот канал.
           </li>
           <li>
             IP посетителя фиксируется на сервере из заголовков прокси и никогда
@@ -419,8 +391,7 @@ SupportChat.on('first_message', ({ body }) => {})`}
             <span className="font-mono">/livechat.js</span> тоже работает).
           </Field>
           <Field name="GET /widget-sw.js">
-            Service worker посетителя (Web Push + установка приложения), отдаётся
-            с тем же first-party префиксом.
+            Service worker посетителя (Web Push + установка приложения).
           </Field>
           <Field name="POST /api/livechat/ingest">
             Посетитель → панель: отправляет сообщение. Возвращает{' '}
@@ -432,9 +403,7 @@ SupportChat.on('first_message', ({ body }) => {})`}
           </Field>
         </div>
         <p className="text-muted-foreground">
-          При first-party установке всё это видно на сайте как{' '}
-          <span className="font-mono">/__support/...</span>, а прокси
-          перенаправляет на сервер. Прямые адреса на сервере:
+          Все запросы виджета идут напрямую на панель:
         </p>
         <DocCodeBlock
           language="text"
@@ -458,10 +427,9 @@ Service worker   ${PANEL_URL}/widget-sw.js
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               Виджет должен один раз подключиться с живого сайта. Откройте
-              страницу со сниппетом (с совпадающим доменом/origin) — статус
-              автоматически сменится на <strong>Активен</strong>. Если он
-              остаётся pending, проверьте домен/origin и что сниппет загружается
-              (вкладка Network).
+              страницу со сниппетом — статус автоматически сменится на{' '}
+              <strong>Активен</strong>. Если он остаётся pending, проверьте, что
+              сниппет загружается и ключ верный (вкладка Network).
             </p>
           </div>
           <div className="rounded-lg border border-border p-3">
@@ -479,9 +447,9 @@ Service worker   ${PANEL_URL}/widget-sw.js
               Виджет вообще не появляется
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              API-ключ должен указывать на существующий канал, а origin запроса
-              должен быть разрешён. Удалённый ключ или запрещённый origin означают,
-              что кнопка не отрисуется.
+              API-ключ должен указывать на существующий канал. Неверный или
+              удалённый ключ означает, что кнопка не отрисуется — проверьте, что
+              в сниппете указан актуальный ключ канала.
             </p>
           </div>
         </div>

@@ -112,25 +112,19 @@ Live-chat channels need no worker — the website talks to the panel directly:
   channel's `lc_…` API key).
 - `GET  /api/livechat/stream?key=…&visitor=…` — SSE of agent replies out.
 
-Both are CORS-enabled and scoped to the channel's configured domain. Add a chat
-channel in **Connections** to mint a key, then embed the SDK served from the
-panel itself:
+Both are CORS-enabled; the channel's `lc_…` API key is the access boundary, so
+the same snippet works on any domain. Add a chat channel in **Connections** to
+mint a key, then embed the single widget tag served from the panel itself:
 
 ```html
-<!-- Drop-in floating widget -->
-<script async src="https://YOUR_PANEL/livechat.js"
-        data-omnidesk-key="lc_xxx"></script>
+<!-- The one and only install snippet — works on any site, any framework -->
+<script async src="https://YOUR_PANEL/widget.js"
+        data-support-key="lc_xxx"></script>
 ```
 
-```js
-// Or drive your own React/Vue UI with the same data flow
-const chat = window.OmnideskLiveChat.create({
-  key: 'lc_xxx',
-  onHistory: (msgs) => {/* render thread */},
-  onMessage: (msg) => {/* append agent reply */},
-})
-chat.send('Hello from the website')
-```
+Everything visual (colours, texts, position, working hours, on/off) is
+configured in the admin and fetched live by the key — the snippet only ever
+carries the key, so you install once and never touch the site code again.
 
 Visitor messages land in the same **Inbox** as Telegram and WhatsApp; agent
 replies stream straight back to the widget in realtime.

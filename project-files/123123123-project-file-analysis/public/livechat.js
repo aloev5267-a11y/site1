@@ -1,32 +1,24 @@
 /*
  * Support chat browser SDK.
  *
- * Two ways to use it:
+ * ONE way to install it — add this single tag to any site, anywhere:
  *
- * 1) Drop-in widget (no code) — add to any site:
- *      <script async src="https://YOUR_SITE/widget.js"
+ *      <script async src="https://YOUR_PANEL/widget.js"
  *              data-support-key="lc_xxx"></script>
- *    A floating button (+ optional greeting teaser) and chat panel are mounted
- *    automatically. Look & feel, welcome message, quick replies, messengers,
- *    working hours and auto-open are ALL configured remotely and fetched live
- *    from /api/livechat/config — so editing the widget updates the live site
- *    without touching the snippet. The data-* attributes below are optional
- *    bootstrap fallbacks used only until the server config loads:
- *      data-support-title, data-support-color, data-support-greeting,
- *      data-support-name, data-support-subject
- *    (Older data-* attribute names are still accepted for compatibility.)
  *
- *    Control + observe it via the global object:
+ * A floating button and chat panel are mounted automatically. Look & feel,
+ * welcome message, quick replies, messengers, working hours and auto-open are
+ * ALL configured remotely and fetched live from /api/livechat/config — so
+ * editing the widget in the admin updates the live site without ever touching
+ * the snippet again. The snippet only ever carries the key.
+ *
+ * Optionally control + observe the widget via the global object:
  *      SupportChat.open({ name, subject, message })  // open + prefill
  *      SupportChat.close()
  *      SupportChat.on('open',          () => { ... })
  *      SupportChat.on('close',         () => { ... })
  *      SupportChat.on('message_sent',  ({ body, count }) => { ... })
  *      SupportChat.on('first_message', ({ body }) => { ... })
- *
- * 2) Programmatic API (custom React/Vue/etc. UI):
- *      const chat = window.SupportChat.create({ key: 'lc_xxx', ... })
- *      chat.send('Hello'); chat.on('message_sent', e => {}); chat.disconnect()
  */
 (function () {
   'use strict'
@@ -38,23 +30,12 @@
       var s = document.getElementsByTagName('script')
       return s[s.length - 1]
     })()
-  // Base path the script is served under. When the host site proxies us as a
-  // first-party path (e.g. https://client.com/__support/widget.js) we KEEP that
-  // prefix so every API call, the service worker and the manifest also resolve
-  // under /__support on the client's own origin — the panel never appears in the
-  // network tab. For a classic root install (https://panel/livechat.js) the
-  // prefix is empty and behaviour is identical to before.
-  var SCRIPT_DIR = (function () {
-    try {
-      return new URL(currentScript.src).pathname.replace(/\/[^/]*$/, '')
-    } catch (e) {
-      return ''
-    }
-  })()
+  // The widget always talks to the panel it was loaded from. We derive the
+  // panel origin straight from this script's own URL, so the same snippet works
+  // on any site without per-site configuration.
   var DEFAULT_BASE = (function () {
     try {
-      var u = new URL(currentScript.src)
-      return (u.origin + SCRIPT_DIR).replace(/\/$/, '')
+      return new URL(currentScript.src).origin
     } catch (e) {
       return ''
     }
@@ -2542,12 +2523,11 @@
     function registerHostSW() {
       try {
         if (!('serviceWorker' in navigator)) return
-        // Served same-origin as the page: at the site root for a classic
-        // install, or under the first-party prefix (e.g. /__support/widget-sw.js)
-        // when proxied. scope '/' lets it control the whole site (and makes
-        // serviceWorker.ready resolve for push) — this needs the response header
-        // Service-Worker-Allowed: / which the panel/proxy sends.
-        var swUrl = location.origin + SCRIPT_DIR + '/widget-sw.js'
+        // Best-effort: register the visitor service worker from the page root so
+        // installability/push can work when the file is reachable there. If it
+        // isn't, the register promise rejects and the gate falls back to its
+        // "unavailable" state — the chat itself is unaffected.
+        var swUrl = location.origin + '/widget-sw.js'
         navigator.serviceWorker
           .register(swUrl, { scope: '/' })
           .then(function () {
@@ -2823,8 +2803,6 @@
   var instance = null
 
   var publicApi = {
-    create: create,
-    mountWidget: mountWidget,
     on: function (event, cb) {
       if (instance) return instance.on(event, cb)
       pendingOn.push([event, cb])
@@ -2841,10 +2819,8 @@
     },
   }
 
-  // Primary, neutral global name. The old name is kept as an alias so snippets
-  // and analytics hooks from already-deployed sites keep working unchanged.
+  // Single global for optionally controlling/observing the widget.
   window.SupportChat = publicApi
-  window.OmnideskLiveChat = publicApi
 
   // Read a data-* attribute by its neutral name, falling back to the legacy
   // brand-prefixed name so snippets already deployed on customer sites keep
@@ -2886,16 +2862,12 @@
   }
 
   // Auto-mount when the script tag carries data-support-key (or an older
-  // equivalent attribute name).
+  // equivalent attribute name). The key is the only attribute needed —
+  // everything visual is fetched live from the server config.
   var autoKey = attr('key')
   if (autoKey && !isPreview) {
     var boot = function () {
-      var boot0 = bootConfigFrom({
-        title: attr('title'),
-        color: attr('color'),
-        greeting: attr('greeting'),
-        name: attr('name'),
-      })
+      var boot0 = bootConfigFrom({})
       // Stash the key/subject so mountWidget's create() can use them.
       boot0.__key = autoKey
       boot0.__subject = attr('subject')

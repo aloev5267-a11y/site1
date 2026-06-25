@@ -3,13 +3,12 @@
 // Widget loaders + service workers must never be cached aggressively, or
 // browsers/CDNs keep serving an old (possibly broken) copy after a fix ships.
 const noCache = { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }
-// Service workers served under a first-party prefix (e.g. /__support/widget-sw.js)
-// still need to control the whole origin (scope '/'). This header authorises it.
+// The visitor service worker needs to control the whole origin (scope '/').
+// This header authorises that broader scope.
 const swAllowRoot = { key: 'Service-Worker-Allowed', value: '/' }
 
 const nextConfig = {
   // Do not advertise the framework in response headers (X-Powered-By: Next.js).
-  // One less signal that reveals what is running behind a first-party proxy.
   poweredByHeader: false,
   images: {
     unoptimized: true,

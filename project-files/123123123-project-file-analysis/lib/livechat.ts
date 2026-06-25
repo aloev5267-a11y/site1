@@ -12,68 +12,19 @@ import type { LivechatChannel } from './data'
  */
 
 /**
- * Parse the channel's `domain` field into a list of allowed-origin entries.
- *
- * The field accepts:
- *   - a single host:           `acme.com`
- *   - several hosts:           `acme.com, staging.acme.com, localhost:3000`
- *     (comma, space or newline separated — handy when one widget runs on
- *     multiple sites)
- *   - a wildcard:              `*` (allow every origin)
- *   - wildcard subdomains:     `*.acme.com`
- */
-export function parseAllowedDomains(domain: string | null | undefined): string[] {
-  return String(domain ?? '')
-    .split(/[\s,]+/)
-    .map((d) => d.trim())
-    .filter(Boolean)
-}
-
-/** Match a request host against one allowed-domain pattern (supports `*.x`). */
-function matchDomain(host: string, pattern: string): boolean {
-  if (pattern === '*') return true
-  if (pattern.startsWith('*.')) {
-    const base = pattern.slice(2)
-    return host === base || host.endsWith('.' + base)
-  }
-  return host === pattern
-}
-
-/**
  * Origin gate for the public live-chat endpoints.
  *
- * Behaviour is opt-in per channel via the `domain` field:
- *   - empty / not set        → allow any origin (back-compat: the API key is
- *                              the only boundary, same as before)
- *   - contains `*`           → allow any origin (explicit wildcard)
- *   - one or more hosts      → ENFORCE: the request Origin's host must match one
- *                              of them (exact or `*.base` subdomain). A missing
- *                              Origin (non-browser / curl) is rejected.
- *
- * This lets security-conscious site owners lock the widget to their domain(s)
- * without breaking the many installs that never configured one.
+ * The widget is meant to run on any site that holds the channel's API key, so
+ * the key itself is the access boundary and every origin is allowed. This keeps
+ * installation friction-free: the same snippet works on any domain — production,
+ * staging, localhost — with no per-site configuration. The channel `domain`
+ * field is informational only (shown in the admin) and never blocks requests.
  */
 export function originAllowed(
-  origin: string | null,
-  channel: Pick<LivechatChannel, 'domain'>,
+  _origin: string | null,
+  _channel: Pick<LivechatChannel, 'domain'>,
 ): boolean {
-  const domains = parseAllowedDomains(channel.domain)
-  if (domains.length === 0) {
-    // No domain configured. By default we stay permissive for back-compat
-    // (the API key is the boundary). Operators can flip LIVECHAT_STRICT_ORIGIN
-    // to require an explicit domain allow-list on every channel, which denies
-    // any channel that hasn't opted in.
-    return process.env.LIVECHAT_STRICT_ORIGIN !== 'true'
-  }
-  if (domains.includes('*')) return true
-  if (!origin) return false
-  let host: string
-  try {
-    host = new URL(origin).host.toLowerCase()
-  } catch {
-    return false
-  }
-  return domains.some((d) => matchDomain(host, d.toLowerCase()))
+  return true
 }
 
 /**
