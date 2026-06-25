@@ -357,11 +357,7 @@ export function LivechatAdmin({
                   Показать инструкцию по установке
                 </summary>
                 <div className="mt-3">
-                  <Instructions
-                    apiKey={c.apiKey}
-                    base={base}
-                    appearance={c.appearance}
-                  />
+                  <Instructions apiKey={c.apiKey} base={base} />
                 </div>
               </details>
             </Card>
