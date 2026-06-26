@@ -1,46 +1,15 @@
 /**
  * Working-hours logic for the website live chat.
  *
- * The chat is "live" only during business hours in Moscow time
- * (Europe/Moscow). Outside that window the widget switches to an off-hours
- * state that offers messenger links instead of an interactive chat.
+ * Each site defines its own working hours (timezone, active weekdays and
+ * open/close times). The chat is "live" only inside that window; outside it the
+ * widget switches to an off-hours state that offers messenger links instead of
+ * an interactive chat.
  *
- * All time math is anchored to Moscow regardless of the server's or visitor's
- * own timezone, so the switch is deterministic and identical everywhere.
+ * All time math is anchored to the site's configured timezone (falling back to
+ * Europe/Moscow for an invalid zone), so the switch is deterministic regardless
+ * of the server's or visitor's own timezone.
  */
-
-/** First hour (inclusive) the chat is live, Moscow time. */
-export const WORK_START_HOUR = 8
-/** First hour (inclusive) the chat is offline again, Moscow time. */
-export const WORK_END_HOUR = 17
-/** IANA zone used for all working-hours calculations. */
-export const WORK_TIMEZONE = 'Europe/Moscow'
-
-/** Current hour (0–23) in Moscow, derived without external date libraries. */
-export function moscowHour(now: Date = new Date()): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: WORK_TIMEZONE,
-    hour: 'numeric',
-    hour12: false,
-  }).formatToParts(now)
-  const raw = parts.find((p) => p.type === 'hour')?.value ?? '0'
-  // Intl can emit '24' for midnight in hour12:false mode — normalize to 0.
-  const hour = Number.parseInt(raw, 10) % 24
-  return Number.isFinite(hour) ? hour : 0
-}
-
-/**
- * True when the live chat is outside working hours (before 08:00 or from 17:00
- * onward, Moscow time). This is the single source of truth for the off-hours
- * switch on both the server and (via the status endpoint) the widget.
- *
- * @deprecated for per-site logic — use {@link isOffHoursFor} with the site's
- * working-hours config. Kept for the legacy global off-hours endpoint.
- */
-export function isOffHours(now: Date = new Date()): boolean {
-  const hour = moscowHour(now)
-  return hour < WORK_START_HOUR || hour >= WORK_END_HOUR
-}
 
 /** Day-of-week (0=Sun..6=Sat) and minutes-since-midnight in a given timezone. */
 function zonedDayAndMinutes(

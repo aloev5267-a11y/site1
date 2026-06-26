@@ -112,7 +112,7 @@ export async function updateLivechatAppearanceAction(
   await requireAdmin()
   const title = String(input.title ?? '').trim().slice(0, 80)
   const greeting = String(input.greeting ?? '').trim().slice(0, 120)
-  let color = String(input.color ?? '').trim()
+  const color = String(input.color ?? '').trim()
   // Only accept a valid hex color; otherwise fall back to the widget default.
   if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
     return { ok: false, message: 'Use a valid hex color, e.g. #2563eb.' }

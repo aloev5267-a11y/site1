@@ -10,7 +10,8 @@ import {
   type ReactNode,
 } from 'react'
 import { toast } from 'sonner'
-import { getPushConfigAction, subscribePushAction } from '@/app/actions/push'
+import { getPushConfigAction } from '@/app/actions/push'
+import { ensurePushSubscription } from '@/lib/push-client'
 
 export type PushSupport = 'checking' | 'ok' | 'unsupported' | 'ios-needs-install'
 export type PushPermission = 'default' | 'denied' | 'granted'
@@ -38,15 +39,6 @@ export function useNotifications(): NotificationState {
   return ctx
 }
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(base64)
-  const output = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i)
-  return output
-}
-
 function detectIosNeedsInstall(): boolean {
   if (typeof navigator === 'undefined') return false
   const ua = navigator.userAgent || ''
@@ -66,25 +58,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const publicKeyRef = useRef<string>('')
 
   const doSubscribe = useCallback(async (): Promise<boolean> => {
-    const reg = await navigator.serviceWorker.ready
-    let sub = await reg.pushManager.getSubscription()
-    if (!sub) {
-      if (!publicKeyRef.current) return false
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKeyRef.current),
-      })
-    }
-    const json = sub.toJSON() as {
-      endpoint?: string
-      keys?: { p256dh?: string; auth?: string }
-    }
-    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false
-    const res = await subscribePushAction({
-      endpoint: json.endpoint,
-      p256dh: json.keys.p256dh,
-      auth: json.keys.auth,
-    })
+    const res = await ensurePushSubscription(publicKeyRef.current)
     if (res.ok) {
       setSubscribed(true)
       return true

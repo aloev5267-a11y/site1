@@ -17,9 +17,10 @@ export const dynamic = 'force-dynamic'
  * Stores a website visitor's Web Push subscription so operator/autopilot replies
  * can reach them even when no tab is open.
  *
- * The subscription is created on the customer's OWN origin (by the host service
- * worker the site ships, see public/omnidesk-sw.js) using our VAPID public key,
- * then POSTed here. We scope it by channel + normalized visitor handle — exactly
+ * The subscription is created on the customer's OWN origin (by the visitor
+ * service worker the widget registers, see public/widget-sw.js) using our VAPID
+ * public key, then POSTed here. We scope it by channel + normalized visitor
+ * handle — exactly
  * the same key the ingest route and the push dispatcher use — so a reply to that
  * conversation finds the right device(s).
  *

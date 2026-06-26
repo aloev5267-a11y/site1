@@ -26,7 +26,7 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Omnidesk'
   const options = {
     body: data.body || 'New message received',
-    icon: '/icon-light-32x32.png',
+    icon: '/app-icon-192.png',
     badge: '/icon-light-32x32.png',
     tag: data.tag || undefined,
     // Replace an existing bubble with the same tag instead of stacking.

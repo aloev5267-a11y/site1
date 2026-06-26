@@ -149,8 +149,8 @@ export async function notifyLeadConversionOnFirstReply(
       'UPDATE conversations SET conversion_sent_at = NULL WHERE id = $1',
       [conversationId],
     ).catch(() => {})
-    console.log(
-      `[v0] lead conversion webhook failed for ${conversationId}:`,
+    console.error(
+      `lead conversion webhook failed for ${conversationId}:`,
       err instanceof Error ? err.message : String(err),
     )
   }

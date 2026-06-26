@@ -13,6 +13,19 @@ export const metadata: Metadata = {
   title: 'Omnidesk — единый центр входящих',
   description:
     'Self-hosted панель для подключения Telegram, WhatsApp и онлайн-чатов сайтов. Рабочие пространства администратора и менеджера.',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/icon-light-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/app-icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: [{ url: '/app-icon-192.png', sizes: '192x192', type: 'image/png' }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'Omnidesk',
+    statusBarStyle: 'black-translucent',
+  },
 }
 
 export const viewport: Viewport = {

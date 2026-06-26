@@ -36,11 +36,6 @@ const nextConfig = {
         source: '/widget-sw.js',
         headers: [noCache, swAllowRoot],
       },
-      {
-        // Legacy visitor service worker, kept for older installs.
-        source: '/omnidesk-sw.js',
-        headers: [noCache, swAllowRoot],
-      },
     ]
   },
 }
