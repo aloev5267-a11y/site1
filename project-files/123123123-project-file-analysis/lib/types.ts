@@ -12,7 +12,7 @@ export interface Manager {
   createdAt: string
 }
 
-export type ChannelType = 'telegram' | 'whatsapp' | 'livechat' | 'max'
+export type ChannelType = 'telegram' | 'whatsapp' | 'livechat' | 'max' | 'vk'
 
 export type ChannelStatus = 'connected' | 'pending' | 'error' | 'disconnected'
 
@@ -468,5 +468,10 @@ export const CHANNEL_META: Record<
   max: {
     label: 'MAX',
     description: 'Connect a MAX bot by its token (Bot API webhook).',
+  },
+  vk: {
+    label: 'VK',
+    description:
+      'Connect a VK community by its access token (Callback API webhook).',
   },
 }

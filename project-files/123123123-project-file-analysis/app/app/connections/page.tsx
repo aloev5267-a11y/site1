@@ -6,6 +6,7 @@ import {
   Plug,
   Send,
   Server,
+  Users,
 } from 'lucide-react'
 import Link from 'next/link'
 import { ChannelCard } from '@/components/manager/channel-card'
@@ -22,6 +23,7 @@ const GROUPS: { type: ChannelType; label: string; icon: typeof Send }[] = [
   { type: 'whatsapp', label: 'WhatsApp', icon: Phone },
   { type: 'livechat', label: 'Онлайн-чат', icon: MessageCircle },
   { type: 'max', label: 'MAX', icon: MessageSquare },
+  { type: 'vk', label: 'VK', icon: Users },
 ]
 
 export default async function ConnectionsPage() {

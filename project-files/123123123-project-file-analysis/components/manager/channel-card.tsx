@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Send,
   Trash2,
+  Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -50,6 +51,7 @@ const ICONS: Record<ChannelType, typeof Send> = {
   whatsapp: Phone,
   livechat: MessageCircle,
   max: MessageSquare,
+  vk: Users,
 }
 
 function timeAgo(iso: string | null): string {

@@ -7,12 +7,21 @@ import {
   deleteChannel,
   enqueueJob,
   getChannel,
+  getVkChannelById,
+  mergeChannelConfig,
   updateChannelSession,
 } from '@/lib/data'
 import { fetchPairingCode, fetchQr } from '@/lib/worker-client'
 import { authLog, describePhone, maskPhone } from '@/lib/auth-log'
 import { decrypt, encrypt } from '@/lib/crypto'
 import { getMe, subscribeWebhook, unsubscribeWebhook } from '@/lib/max'
+import {
+  addCallbackServer as addVkCallbackServer,
+  deleteCallbackServer as deleteVkCallbackServer,
+  getConfirmationCode as getVkConfirmationCode,
+  getGroup as getVkGroup,
+  setCallbackSettings as setVkCallbackSettings,
+} from '@/lib/vk'
 import { resolveAppBaseUrl } from '@/lib/app-url'
 import { randomBytes } from 'crypto'
 import type { ChannelStatus, JobAction, SessionStatus } from '@/lib/types'
@@ -269,6 +278,141 @@ export async function connectMaxAction(
   }
 }
 
+/* ------------------------------- VK (Community) -------------------------- */
+
+/**
+ * Connect a VK community by its access token (Settings → Work with API → Access
+ * tokens, with the `messages` + `manage` scopes). Like MAX this needs no worker
+ * session: we validate the token via groups.getById, persist the channel with
+ * the token + a random Callback secret + the VK confirmation code (token and
+ * secret encrypted at rest), then register a Callback API server pointed at our
+ * /api/vk/webhook/[channelId] route and switch on the message_new event.
+ * Inbound then flows in exactly like live-chat; outbound is sent directly via
+ * messages.send.
+ */
+export async function connectVkAction(
+  formData: FormData,
+): Promise<StartResult> {
+  const session = await requireManager()
+  const token = String(formData.get('token') ?? '').trim()
+  const fallbackName = String(formData.get('name') ?? '').trim()
+
+  if (!token) {
+    return {
+      ok: false,
+      message: 'Вставьте токен доступа сообщества VK.',
+    }
+  }
+
+  // 1. Validate the token by resolving the community it belongs to.
+  const group = await getVkGroup(token)
+  if (!group.ok) {
+    return {
+      ok: false,
+      message: `Не удалось проверить токен VK: ${group.error}. Нужен ключ доступа сообщества со scope «Сообщения» и «Управление».`,
+    }
+  }
+  const groupId = group.data.id
+
+  // 2. Fetch the confirmation string VK will expect our webhook to echo.
+  const confirmation = await getVkConfirmationCode(token, groupId)
+  if (!confirmation.ok) {
+    return {
+      ok: false,
+      message: `Токен принят, но не удалось получить код подтверждения Callback API: ${confirmation.error}.`,
+    }
+  }
+
+  const name =
+    fallbackName ||
+    group.data.name ||
+    (group.data.screen_name ? `@${group.data.screen_name}` : 'VK-сообщество')
+  const detail = group.data.screen_name
+    ? `@${group.data.screen_name}`
+    : `club${groupId}`
+
+  // 3. Persist the channel with encrypted secrets. A random per-channel secret
+  //    lets the webhook verify the `secret` field VK sends with each event.
+  const webhookSecret = randomBytes(24).toString('hex')
+  const channel = await createChannel({
+    managerId: session.sub,
+    type: 'vk',
+    name,
+    detail,
+    status: 'connected',
+    sessionStatus: 'online',
+    config: {
+      token: encrypt(token),
+      webhookSecret: encrypt(webhookSecret),
+      confirmationCode: confirmation.data,
+      groupId,
+      screenName: group.data.screen_name ?? null,
+    },
+  })
+
+  // 4. Register the Callback API server (VK probes the URL immediately, so the
+  //    channel — and thus the confirmation code — must already be persisted).
+  let webhookUrl: string
+  try {
+    const base = await resolveAppBaseUrl()
+    webhookUrl = `${base}/api/vk/webhook/${channel.id}`
+  } catch (err) {
+    await deleteChannel(channel.id, session.sub)
+    return {
+      ok: false,
+      message:
+        err instanceof Error
+          ? err.message
+          : 'Не удалось определить публичный URL приложения.',
+    }
+  }
+
+  const server = await addVkCallbackServer(
+    token,
+    groupId,
+    webhookUrl,
+    webhookSecret,
+  )
+  if (!server.ok) {
+    await deleteChannel(channel.id, session.sub)
+    return {
+      ok: false,
+      message: `Сообщество проверено, но не удалось зарегистрировать Callback-сервер: ${server.error}. Убедитесь, что приложение доступно по HTTPS.`,
+    }
+  }
+
+  // 5. Switch on the message_new event for the freshly-registered server.
+  const settings = await setVkCallbackSettings(
+    token,
+    groupId,
+    server.data.server_id,
+  )
+  if (!settings.ok) {
+    await deleteVkCallbackServer(token, groupId, server.data.server_id).catch(
+      () => {},
+    )
+    await deleteChannel(channel.id, session.sub)
+    return {
+      ok: false,
+      message: `Не удалось включить события сообщений в VK: ${settings.error}.`,
+    }
+  }
+
+  // Persist the VK-assigned callback server id so we can delete it on teardown.
+  await mergeChannelConfig(channel.id, session.sub, {
+    serverId: server.data.server_id,
+  })
+
+  revalidatePath('/app/connections')
+  revalidatePath('/app')
+  return {
+    ok: true,
+    message: `VK-сообщество «${name}» подключено.`,
+    channelId: channel.id,
+    sessionStatus: 'online',
+  }
+}
+
 /* ----------------------------- Status polling ---------------------------- */
 
 export interface ChannelStatusSnapshot {
@@ -368,6 +512,19 @@ export async function deleteChannelAction(id: string): Promise<ChannelResult> {
         )
       } catch (err) {
         console.error('[panel] failed to unsubscribe MAX webhook:', err)
+      }
+    }
+  }
+  // VK: best-effort delete the Callback API server so VK stops POSTing to a
+  // route that will no longer exist. The token is encrypted + stripped from the
+  // sanitized channel config, so re-read the decrypted VK channel directly.
+  if (channel && channel.type === 'vk') {
+    const vk = await getVkChannelById(id)
+    if (vk && vk.serverId != null) {
+      try {
+        await deleteVkCallbackServer(vk.token, vk.groupId, vk.serverId)
+      } catch (err) {
+        console.error('[panel] failed to delete VK callback server:', err)
       }
     }
   }

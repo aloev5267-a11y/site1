@@ -23,6 +23,7 @@ import {
   updateManagerPassword,
 } from '@/lib/data'
 import { deliverMaxMessage } from '@/lib/max-dispatch'
+import { deliverVkMessage } from '@/lib/vk-dispatch'
 import {
   deliverWhatsappMessage,
   markWhatsappConversationRead,
@@ -176,6 +177,9 @@ export async function sendMessageAction(
   } else if (conv && conv.channelType === 'max') {
     // Push straight to MAX and backfill the provider id (or flag failed).
     await deliverMaxMessage(conversationId, msg.id, text)
+  } else if (conv && conv.channelType === 'vk') {
+    // Push straight to VK and backfill the provider id (or flag failed).
+    await deliverVkMessage(conversationId, msg.id, text)
   }
 
   revalidatePath('/app/inbox')

@@ -2,6 +2,7 @@ import 'server-only'
 import { query } from '../db'
 import { addMessage, getLivechatWorkingHoursByChannelId } from '../data'
 import { deliverMaxMessage } from '../max-dispatch'
+import { deliverVkMessage } from '../vk-dispatch'
 import { deliverWhatsappMessage } from '../whatsapp-dispatch'
 import { isOffHoursFor } from '../offhours'
 import {
@@ -107,6 +108,7 @@ async function sendAutoReply(
   // safe to call them unconditionally.
   if (msg) {
     await deliverMaxMessage(conversationId, msg.id, body)
+    await deliverVkMessage(conversationId, msg.id, body)
     await deliverWhatsappMessage(conversationId, msg.id, body)
   }
 }

@@ -29,6 +29,7 @@ const ICONS: Record<ChannelType, typeof Send> = {
   whatsapp: Phone,
   livechat: MessageCircle,
   max: MessageSquare,
+  vk: Users,
 }
 
 export default async function ManagerOverviewPage() {

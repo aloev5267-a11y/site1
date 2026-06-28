@@ -43,6 +43,8 @@ function channelLabel(type?: string): string {
       return 'Live chat'
     case 'max':
       return 'MAX'
+    case 'vk':
+      return 'VK'
     default:
       return 'Message'
   }

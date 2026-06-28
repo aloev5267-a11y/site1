@@ -45,6 +45,7 @@ import {
   Sticker,
   Tag,
   Trash2,
+  Users,
   X,
   Zap,
 } from 'lucide-react'
@@ -174,6 +175,14 @@ const CHANNEL_VISUAL: Record<
       'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400',
     accentText: 'text-amber-600 dark:text-amber-400',
     dot: 'bg-amber-500',
+  },
+  vk: {
+    icon: Users,
+    short: 'VK',
+    badge:
+      'bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400',
+    accentText: 'text-blue-600 dark:text-blue-400',
+    dot: 'bg-blue-500',
   },
 }
 
@@ -1779,6 +1788,7 @@ export function InboxView({
       whatsapp: 0,
       livechat: 0,
       max: 0,
+      vk: 0,
     }
     for (const c of conversations) counts[c.channelType] += 1
     return counts
@@ -2386,7 +2396,7 @@ export function InboxView({
   // Channel types that actually have chats — drives whether the "Тип" filter
   // menu is worth showing at all.
   const availableTypes = (
-    ['telegram', 'whatsapp', 'livechat', 'max'] as ChannelType[]
+    ['telegram', 'whatsapp', 'livechat', 'max', 'vk'] as ChannelType[]
   ).filter((t) => typeCounts[t] > 0)
 
   const hasActiveFilters =

@@ -1,4 +1,11 @@
-import { MessageCircle, MessageSquare, Phone, Radio, Send } from 'lucide-react'
+import {
+  MessageCircle,
+  MessageSquare,
+  Phone,
+  Radio,
+  Send,
+  Users,
+} from 'lucide-react'
 import { EmptyState, PageHeader, StatusBadge } from '@/components/page-parts'
 import { Card } from '@/components/ui/card'
 import { listAllChannels, listManagers } from '@/lib/data'
@@ -9,6 +16,7 @@ const ICONS: Record<ChannelType, typeof Send> = {
   whatsapp: Phone,
   livechat: MessageCircle,
   max: MessageSquare,
+  vk: Users,
 }
 
 function timeAgo(iso: string | null): string {

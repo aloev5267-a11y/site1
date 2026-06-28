@@ -59,6 +59,7 @@ const TYPE_LABEL: Record<ChannelType, string> = {
   whatsapp: 'WhatsApp',
   livechat: 'Онлайн-чат',
   max: 'MAX',
+  vk: 'VK',
 }
 
 const TYPE_DOT: Record<ChannelType, string> = {
@@ -66,6 +67,7 @@ const TYPE_DOT: Record<ChannelType, string> = {
   whatsapp: 'bg-emerald-500',
   livechat: 'bg-violet-500',
   max: 'bg-amber-500',
+  vk: 'bg-blue-500',
 }
 
 function startOfDay(d: Date): Date {

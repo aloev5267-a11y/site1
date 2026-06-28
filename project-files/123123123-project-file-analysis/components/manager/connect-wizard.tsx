@@ -10,11 +10,13 @@ import {
   Plus,
   Send,
   ShieldCheck,
+  Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   connectMaxAction,
   connectTelegramAction,
+  connectVkAction,
   getChannelStatusAction,
   submitTelegramCodeAction,
   submitTelegramPasswordAction,
@@ -45,10 +47,11 @@ type Step =
   | 'tg-code'
   | 'tg-password'
   | 'max-token'
+  | 'vk-token'
   | 'connected'
 
 const OPTIONS: {
-  type: Extract<ChannelType, 'telegram' | 'max'>
+  type: Extract<ChannelType, 'telegram' | 'max' | 'vk'>
   label: string
   description: string
   icon: typeof Send
@@ -64,6 +67,12 @@ const OPTIONS: {
     label: 'MAX',
     description: 'Бот MAX по токену из @MasterBot (Bot API)',
     icon: MessageSquare,
+  },
+  {
+    type: 'vk',
+    label: 'VK',
+    description: 'Сообщество VK по ключу доступа (Callback API)',
+    icon: Users,
   },
 ]
 
@@ -191,6 +200,8 @@ export function ConnectWizard({
       setStep('tg-phone')
     } else if (t === 'max') {
       setStep('max-token')
+    } else if (t === 'vk') {
+      setStep('vk-token')
     }
   }
 
@@ -243,6 +254,26 @@ export function ConnectWizard({
   function submitMaxToken(formData: FormData) {
     startTransition(async () => {
       const res = await connectMaxAction(formData)
+      if (!res.ok) {
+        setError(res.message)
+        toast.error(res.message)
+        return
+      }
+      dirtyRef.current = true
+      setChannelId(res.channelId ?? null)
+      toast.success(res.message)
+      setStep('connected')
+    })
+  }
+
+  /* -------------------------------- VK -------------------------------- */
+
+  // VK is a Callback API integration: one round-trip (validate token, fetch the
+  // confirmation code, register the callback server + subscribe to message_new)
+  // and we're done — no polling, no live session.
+  function submitVkToken(formData: FormData) {
+    startTransition(async () => {
+      const res = await connectVkAction(formData)
       if (!res.ok) {
         setError(res.message)
         toast.error(res.message)
@@ -483,6 +514,60 @@ export function ConnectWizard({
               </div>
               <Waiting
                 label="Проверяем токен и регистрируем вебхук…"
+                show={pending}
+              />
+            </div>
+            {error ? <ErrorNote message={error} /> : null}
+            <DialogFooterRow onBack={() => setStep('pick')}>
+              <Button type="submit" disabled={pending}>
+                {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+                Подключить
+              </Button>
+            </DialogFooterRow>
+          </form>
+        ) : null}
+
+        {/* VK: community access token */}
+        {step === 'vk-token' ? (
+          <form action={submitVkToken}>
+            <input type="hidden" name="type" value="vk" />
+            <BackHeader onBack={() => setStep('pick')} title="Подключить VK" />
+            <div className="my-4 flex flex-col gap-4">
+              <ol className="w-full space-y-1.5 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <li>
+                  1. Откройте «Управление сообществом» → «Настройки» → «Работа с
+                  API».
+                </li>
+                <li>
+                  2. Создайте ключ доступа со scope{' '}
+                  <span className="font-medium text-foreground">Сообщения</span>{' '}
+                  и{' '}
+                  <span className="font-medium text-foreground">Управление</span>
+                  .
+                </li>
+                <li>3. Скопируйте ключ и вставьте его ниже.</li>
+              </ol>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="vk-name">Отображаемое имя</Label>
+                <Input
+                  id="vk-name"
+                  name="name"
+                  placeholder="Моё сообщество VK (необязательно)"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="vk-token">Ключ доступа сообщества</Label>
+                <Input
+                  id="vk-token"
+                  name="token"
+                  placeholder="Вставьте ключ доступа сообщества"
+                  autoComplete="off"
+                  autoFocus
+                  required
+                />
+              </div>
+              <Waiting
+                label="Проверяем ключ и настраиваем Callback API…"
                 show={pending}
               />
             </div>
