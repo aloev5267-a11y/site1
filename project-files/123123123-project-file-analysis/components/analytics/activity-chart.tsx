@@ -10,6 +10,7 @@ export type ActivityDay = {
   whatsapp: number
   livechat: number
   max: number
+  vk: number
 }
 
 export type ActivityHour = {
@@ -18,6 +19,7 @@ export type ActivityHour = {
   whatsapp: number
   livechat: number
   max: number
+  vk: number
 }
 
 const DAY_COLORS = {
@@ -25,6 +27,7 @@ const DAY_COLORS = {
   whatsapp: '#10b981',
   livechat: '#8b5cf6',
   max: '#f59e0b',
+  vk: '#3b82f6',
 } as const
 
 /**
@@ -58,7 +61,9 @@ function PeopleByHourChart({
   byHour: ActivityHour[]
   title: string
 }) {
-  const totals = byHour.map((h) => h.telegram + h.whatsapp + h.livechat + h.max)
+  const totals = byHour.map(
+    (h) => h.telegram + h.whatsapp + h.livechat + h.max + h.vk,
+  )
   const sum = totals.reduce((n, v) => n + v, 0)
   const max = Math.max(1, ...totals)
   const top = niceCeil(max)
@@ -183,7 +188,7 @@ function PeopleByDayChart({
 }) {
   const len = byDay.length
   const grandTotal = byDay.reduce(
-    (n, d) => n + d.telegram + d.whatsapp + d.livechat + d.max,
+    (n, d) => n + d.telegram + d.whatsapp + d.livechat + d.max + d.vk,
     0,
   )
 
@@ -226,7 +231,9 @@ function PeopleByDayChart({
 
   const vMax = Math.max(
     1,
-    ...visible.map((d) => d.telegram + d.whatsapp + d.livechat + d.max),
+    ...visible.map(
+      (d) => d.telegram + d.whatsapp + d.livechat + d.max + d.vk,
+    ),
   )
   const top = niceCeil(vMax)
   const ticks = axisTicks(top)
@@ -244,9 +251,16 @@ function PeopleByDayChart({
   const lcTop = visible.map(
     (d, i) => [xAt(i), yAt(d.telegram + d.whatsapp + d.livechat)] as const,
   )
-  const sumTop = visible.map(
+  const maxTop = visible.map(
     (d, i) =>
       [xAt(i), yAt(d.telegram + d.whatsapp + d.livechat + d.max)] as const,
+  )
+  const sumTop = visible.map(
+    (d, i) =>
+      [
+        xAt(i),
+        yAt(d.telegram + d.whatsapp + d.livechat + d.max + d.vk),
+      ] as const,
   )
 
   const labelStep = Math.max(1, Math.ceil(n / 8))
@@ -325,7 +339,11 @@ function PeopleByDayChart({
 
   const hovered = hover != null && visible[hover] ? visible[hover] : null
   const hoveredSum = hovered
-    ? hovered.telegram + hovered.whatsapp + hovered.livechat + hovered.max
+    ? hovered.telegram +
+      hovered.whatsapp +
+      hovered.livechat +
+      hovered.max +
+      hovered.vk
     : 0
 
   return (
@@ -342,6 +360,7 @@ function PeopleByDayChart({
           <LegendDot className="bg-emerald-500" label="WhatsApp" />
           <LegendDot className="bg-violet-500" label="Чат" />
           <LegendDot className="bg-amber-500" label="MAX" />
+          <LegendDot className="bg-blue-500" label="VK" />
         </div>
       </div>
 
@@ -411,8 +430,13 @@ function PeopleByDayChart({
               fillOpacity="0.55"
             />
             <path
-              d={areaBetween(lcTop, sumTop)}
+              d={areaBetween(lcTop, maxTop)}
               fill={DAY_COLORS.max}
+              fillOpacity="0.55"
+            />
+            <path
+              d={areaBetween(maxTop, sumTop)}
+              fill={DAY_COLORS.vk}
               fillOpacity="0.55"
             />
             <path
@@ -488,6 +512,10 @@ function PeopleByDayChart({
                 <span className="flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-amber-500" /> MAX{' '}
                   {hovered.max}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-blue-500" /> VK{' '}
+                  {hovered.vk}
                 </span>
               </div>
             </div>

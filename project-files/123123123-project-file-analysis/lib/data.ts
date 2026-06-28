@@ -3842,9 +3842,9 @@ export async function getGroupAnalytics(
 
   // Dense per-day series across [from, to) so the chart has no gaps. `r.d` is
   // already a local 'YYYY-MM-DD' string (bucketed in the admin's timezone).
-  const dayMap = new Map<string, { telegram: number; whatsapp: number; livechat: number; max: number }>()
+  const dayMap = new Map<string, { telegram: number; whatsapp: number; livechat: number; max: number; vk: number }>()
   for (const r of dayRows) {
-    const cur = dayMap.get(r.d) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0 }
+    const cur = dayMap.get(r.d) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0, vk: 0 }
     cur[r.type] = Number(r.people)
     dayMap.set(r.d, cur)
   }
@@ -3863,7 +3863,7 @@ export async function getGroupAnalytics(
   // Cap the series at 92 days to keep the response bounded for huge ranges.
   for (let i = 0; i < 92 && cursor < endShift; i++) {
     const key = cursor.toISOString().slice(0, 10)
-    const v = dayMap.get(key) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0 }
+    const v = dayMap.get(key) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0, vk: 0 }
     byDay.push({ date: key, ...v })
     cursor = new Date(cursor)
     cursor.setUTCDate(cursor.getUTCDate() + 1)
@@ -3888,15 +3888,15 @@ export async function getGroupAnalytics(
         GROUP BY 1, 2`,
       dayParams,
     )
-    const hourMap = new Map<number, { telegram: number; whatsapp: number; livechat: number; max: number }>()
+    const hourMap = new Map<number, { telegram: number; whatsapp: number; livechat: number; max: number; vk: number }>()
     for (const r of hourRows) {
-      const cur = hourMap.get(r.h) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0 }
+      const cur = hourMap.get(r.h) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0, vk: 0 }
       cur[r.type] = Number(r.people)
       hourMap.set(r.h, cur)
     }
     byHour = []
     for (let h = 0; h < 24; h++) {
-      const v = hourMap.get(h) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0 }
+      const v = hourMap.get(h) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0, vk: 0 }
       byHour.push({ hour: h, ...v })
     }
   }
@@ -3988,9 +3988,9 @@ export async function getManagerActivityAnalytics(
     ),
   ])
 
-  const dayMap = new Map<string, { telegram: number; whatsapp: number; livechat: number; max: number }>()
+  const dayMap = new Map<string, { telegram: number; whatsapp: number; livechat: number; max: number; vk: number }>()
   for (const r of dayRows) {
-    const cur = dayMap.get(r.d) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0 }
+    const cur = dayMap.get(r.d) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0, vk: 0 }
     cur[r.type] = Number(r.people)
     dayMap.set(r.d, cur)
   }
@@ -4007,7 +4007,7 @@ export async function getManagerActivityAnalytics(
   )
   for (let i = 0; i < 92 && cursor < endShift; i++) {
     const key = cursor.toISOString().slice(0, 10)
-    const v = dayMap.get(key) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0 }
+    const v = dayMap.get(key) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0, vk: 0 }
     byDay.push({ date: key, ...v })
     cursor = new Date(cursor)
     cursor.setUTCDate(cursor.getUTCDate() + 1)
@@ -4025,15 +4025,15 @@ export async function getManagerActivityAnalytics(
         GROUP BY 1, 2`,
       dayParams,
     )
-    const hourMap = new Map<number, { telegram: number; whatsapp: number; livechat: number; max: number }>()
+    const hourMap = new Map<number, { telegram: number; whatsapp: number; livechat: number; max: number; vk: number }>()
     for (const r of hourRows) {
-      const cur = hourMap.get(r.h) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0 }
+      const cur = hourMap.get(r.h) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0, vk: 0 }
       cur[r.type] = Number(r.people)
       hourMap.set(r.h, cur)
     }
     byHour = []
     for (let h = 0; h < 24; h++) {
-      const v = hourMap.get(h) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0 }
+      const v = hourMap.get(h) ?? { telegram: 0, whatsapp: 0, livechat: 0, max: 0, vk: 0 }
       byHour.push({ hour: h, ...v })
     }
   }
