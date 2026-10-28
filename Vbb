@@ -1,0 +1,284 @@
+
+# SMS Gateway API — спецификация для Android-приложения
+
+Приложение на телефоне пересылает все СМС (входящие и, при желании, исходящие) на сервер.
+Сервер показывает их в админ-панели в разделе «Телефоны». Один телефон = одно устройство.
+
+- Базовый URL: `https://dogovor.guv.by` (прод). Все пути ниже относительные.
+- Формат: JSON (`Content-Type: application/json; charset=utf-8`), UTF-8.
+- Любой ответ: `{ "ok": true, ... }` при успехе или `{ "ok": false, "error": "текст" }` при ошибке.
+  Текст ошибки — человекочитаемый, можно показать в приложении.
+- Время: ISO 8601 в UTC (`2026-10-28T14:03:11.000Z`) **или** миллисекунды Unix (`1761660191000`). Сервер принимает оба варианта, в ответах всегда ISO.
+
+## 1. Авторизация
+
+Два секрета:
+
+| Секрет | Откуда | Где используется |
+| --- | --- | --- |
+| **Ключ регистрации** (`enroll_…`) | Выдаётся в админке («Телефоны» → «Ключ регистрации»), вшивается в APK или вводится в настройках приложения | Только в `POST /api/sms-gateway/register`, заголовок `X-Enroll-Key` |
+| **Токен устройства** (`sgw_…`) | Возвращается сервером при регистрации, уникален для телефона | Все остальные запросы, заголовок `Authorization: Bearer <token>` |
+
+Токен хранить в `EncryptedSharedPreferences`. Он не истекает сам, но админ может его отозвать:
+тогда сервер отвечает **401** — приложение должно заново вызвать `register` с тем же `deviceKey`
+и сохранить новый токен. Ответ **403** означает блокировку устройства админом — повторять запросы
+бессмысленно, пока админ не разблокирует (можно опрашивать `GET /me` раз в несколько минут).
+
+## 2. Эндпоинты
+
+### 2.1 `POST /api/sms-gateway/register` — регистрация / перерегистрация
+
+Заголовки: `X-Enroll-Key: <ключ регистрации>`
+
+```json
+{
+  "deviceKey": "9f1c2a7b3d4e5f60",
+  "name": "Телефон №1 (A1)",
+  "phoneNumber": "+375291234567",
+  "manufacturer": "Xiaomi",
+  "model": "Redmi Note 12",
+  "androidVersion": "14",
+  "appVersion": "1.0.3"
+}
+```
+
+| Поле | Обяз. | Описание |
+| --- | --- | --- |
+| `deviceKey` | да | Стабильный id телефона: `Settings.Secure.ANDROID_ID` (4–128 символов). По нему сервер понимает, что это тот же телефон после переустановки. |
+| `name` | нет | Имя по умолчанию; админ может переименовать в панели. Если не передать — `manufacturer + model`. |
+| `phoneNumber` | нет | Номер SIM, если известен (`SubscriptionManager`), в международном формате. |
+| `manufacturer`, `model`, `androidVersion`, `appVersion` | нет | `Build.MANUFACTURER`, `Build.MODEL`, `Build.VERSION.RELEASE`, `BuildConfig.VERSION_NAME`. |
+
+Ответ `201` (новое устройство) или `200` (перерегистрация):
+
+```json
+{ "ok": true, "deviceId": "6a1d…", "token": "sgw_Qm9…", "created": true, "name": "Телефон №1 (A1)" }
+```
+
+Повторная регистрация с тем же `deviceKey` обновляет метаданные и **выпускает новый токен; старый перестаёт работать**.
+Вызывать `register` только когда токена нет или получен 401.
+
+Ошибки: `400` нет `deviceKey`; `403` неверный ключ / устройство заблокировано; `429` слишком много попыток
+с одного IP (20 за 10 минут, в ответе `retryAfterSec`); `503` ключ регистрации не задан в админке.
+
+### 2.2 `POST /api/sms-gateway/messages` — отправка СМС (пачкой)
+
+Заголовки: `Authorization: Bearer <token>`
+
+```json
+{
+  "messages": [
+    {
+      "externalId": "sms-10234",
+      "direction": "inbox",
+      "address": "MTS",
+      "body": "Ваш код: 482913",
+      "receivedAt": "2026-10-28T14:03:11.000Z",
+      "simSlot": 0
+    }
+  ]
+}
+```
+
+| Поле | Обяз. | Описание |
+| --- | --- | --- |
+| `externalId` | да | Уникальный id сообщения **на этом телефоне** (≤128 символов). Сервер хранит пару (устройство, externalId) и молча пропускает повторы — поэтому пачку можно безопасно переотправлять после ошибки сети. См. раздел 4 про выбор id. |
+| `direction` | нет | `inbox` (по умолчанию) или `sent`. |
+| `address` | да | Отправитель/получатель как в системе (`Telephony.Sms.ADDRESS`): номер или альфа-имя. ≤128 символов. |
+| `body` | да | Текст. Обрезается до 4000 символов. |
+| `receivedAt` | да | Время сообщения по телефону (`Telephony.Sms.DATE`), ISO или миллисекунды. |
+| `simSlot` | нет | Индекс SIM 0..7 для двухсимочных телефонов (по `SUBSCRIPTION_ID` → `SubscriptionInfo.simSlotIndex`). |
+
+Не больше **500** сообщений в одной пачке (иначе `413`). Допустимо также одиночное `{"message": {...}}`.
+
+Ответ `200`:
+
+```json
+{ "ok": true, "accepted": 12, "duplicates": 3, "rejected": [ { "index": 7, "reason": "нет address" } ] }
+```
+
+- `accepted` — сохранено новых; `duplicates` — уже были на сервере; `rejected` — невалидные элементы с причиной (их исправлять и слать не нужно, если причина — отсутствие поля из-за системного мусора).
+- Если пачка принята (HTTP 200) — считать все её сообщения доставленными, даже если `accepted = 0`.
+
+### 2.3 `GET /api/sms-gateway/messages` — курсор синхронизации
+
+Заголовки: `Authorization: Bearer <token>`
+
+Ответ: `{ "ok": true, "cursor": { "lastExternalId": "sms-10234", "lastReceivedAt": "2026-10-28T14:03:11.000Z" } }`
+или `"cursor": null`, если сообщений ещё не было. Полезно после переустановки: выгрузить из `content://sms`
+только то, что новее `lastReceivedAt` (дубли всё равно отфильтруются).
+
+### 2.4 `POST /api/sms-gateway/heartbeat` — «я жив»
+
+Заголовки: `Authorization: Bearer <token>`. Тело — любое подмножество полей, можно `{}`:
+
+```json
+{ "batteryLevel": 87, "networkType": "wifi", "appVersion": "1.0.3", "phoneNumber": "+375291234567" }
+```
+
+Ответ: `{ "ok": true, "blocked": false, "commands": [ … ], "serverTime": "…" }`.
+Слать **раз в 1–2 минуты** (WorkManager/foreground service): устройство считается «в сети», если выходило
+на связь в последние 5 минут. Любой успешный запрос с токеном тоже обновляет «последний раз на связи».
+
+`commands` — команды из очереди в том же формате, что у `GET /commands` (раздел 2.6). Чаще всего массив пуст.
+Если он непустой — выполнить каждую команду и прислать результат (раздел 2.7). Выданные команды повторно
+в heartbeat не приходят.
+
+### 2.5 `GET /api/sms-gateway/me` — проверка токена
+
+Заголовки: `Authorization: Bearer <token>`
+
+Ответ: `{ "ok": true, "device": { "id": "…", "name": "…", "phoneNumber": "…", "blocked": false, "lastMessageAt": "…" }, "serverTime": "…" }`.
+Вызывать при старте приложения; на 401 — перерегистрация.
+
+### 2.6 `GET /api/sms-gateway/commands` — очередь команд (USSD)
+
+Заголовки: `Authorization: Bearer <token>`
+
+Админ в панели может поставить телефону команду — сейчас это **USSD-запрос** (`*100#` — баланс и т.п.).
+Телефон забирает команды из очереди и выполняет их. Ответ:
+
+```json
+{
+  "ok": true,
+  "commands": [
+    { "id": 17, "kind": "ussd", "payload": "*100#", "simSlot": 0, "expiresAt": "2026-10-28T14:13:11.000Z" }
+  ],
+  "serverTime": "2026-10-28T14:03:11.000Z"
+}
+```
+
+| Поле | Описание |
+| --- | --- |
+| `id` | Номер команды — нужен для отправки результата. |
+| `kind` | Вид команды. Сейчас всегда `ussd`; неизвестные виды — прислать результат `ok:false` с `errorMessage:"unsupported"`. |
+| `payload` | Для `ussd` — сам код, уже проверенный сервером (`*`/`#`, цифры, завершается `#`). |
+| `simSlot` | Индекс SIM 0/1, с которой выполнять, или `null` — SIM по умолчанию для звонков. |
+| `expiresAt` | После этого времени сервер пометит команду истёкшей; результат по ней всё равно можно прислать, но если команда ещё не начата — пропустить. |
+
+Выданные команды помечаются «выполняются» и **второй раз не возвращаются** — USSD могут быть платными,
+поэтому сервер никогда не повторяет запрос сам. Если приложение забрало команду и упало, через 10 минут она
+станет `expired`, и админ поставит её заново. Не более 3 команд за один ответ.
+
+Отдельно опрашивать этот эндпоинт не обязательно: те же команды приходят в поле `commands` ответа на heartbeat.
+Если нужна оперативность — опрашивать раз в 15–30 с, пока приложение в foreground.
+
+### 2.7 `POST /api/sms-gateway/commands/{id}/result` — результат команды
+
+Заголовки: `Authorization: Bearer <token>`
+
+Успех (`UssdResponseCallback.onReceiveUssdResponse`):
+
+```json
+{ "ok": true, "response": "Баланс: 12.50 BYN. Бонусы: 150 мин до 05.11" }
+```
+
+Ошибка (`UssdResponseCallback.onReceiveUssdResponseFailed`):
+
+```json
+{ "ok": false, "errorCode": -1, "errorMessage": "USSD_RETURN_FAILURE" }
+```
+
+| Поле | Обяз. | Описание |
+| --- | --- | --- |
+| `ok` | да | `true` — оператор ответил, `false` — запрос не выполнен. |
+| `response` | при `ok:true` | Текст ответа оператора как есть (`CharSequence.toString()`), до 4000 символов. Пустая строка допустима. |
+| `errorCode` | нет | `failureCode` из callback: `-1` `USSD_RETURN_FAILURE`, `-2` `USSD_ERROR_SERVICE_UNAVAIL`. Свои коды (нет разрешения, нет SIM, таймаут) — любые другие числа с пояснением в `errorMessage`. |
+| `errorMessage` | нет | Короткое пояснение для админа (≤500 символов), например `SecurityException: CALL_PHONE`. |
+
+Ответ `200`: `{ "ok": true, "status": "done" }` или `"failed"`. `404` — команда не этого устройства или не существует;
+`409` — результат уже принят или команда отменена/истекла: **не повторять**, просто забыть команду.
+При сетевой ошибке результат хранить локально и переотправлять, пока не придёт 200/404/409.
+
+## 3. Коды ответов
+
+| Код | Смысл | Что делать приложению |
+| --- | --- | --- |
+| 200 / 201 | Успех | — |
+| 400 | Невалидный JSON или нет обязательного поля | Исправить запрос, не повторять как есть |
+| 401 | Нет/недействителен токен | `register` заново, сохранить новый токен, повторить |
+| 403 | Неверный ключ регистрации или устройство заблокировано | Показать статус, опрашивать `GET /me` раз в несколько минут |
+| 413 | Больше 500 сообщений в пачке | Разбить пачку |
+| 429 | Слишком часто (`retryAfterSec`) | Подождать и повторить |
+| 500 / 502 / 503 | Серверная ошибка или сервер недоступен | Экспоненциальная пауза (30 с → 1 мин → 5 мин), очередь на телефоне не очищать |
+
+## 4. Рекомендации по реализации на Android
+
+1. **Два источника СМС**, один формат:
+   - `BroadcastReceiver` на `android.provider.Telephony.SMS_RECEIVED` — моментальная доставка новых входящих;
+   - периодическая (каждые 15 мин, WorkManager) и стартовая выгрузка из `content://sms` (`inbox` + `sent`) — страховка от пропусков, когда приложение было убито.
+2. **`externalId`** должен совпадать для одного и того же СМС из обоих источников. Надёжный вариант — хэш:
+   `externalId = sha256(address + "|" + dateMillis + "|" + body).hex().substring(0, 40)`. Для сообщений из `content://sms` можно
+   использовать `_id`, **но тогда и для broadcast нужно найти это же сообщение в провайдере** (по address+date) — проще везде хэш.
+3. **Очередь с подтверждением**: сохранять сообщения в локальную БД (Room) со статусом «не отправлено», слать пачками по ≤200,
+   помечать отправленными только после HTTP 200. Повторы безопасны благодаря дедупликации.
+4. **Разрешения**: `RECEIVE_SMS`, `READ_SMS`, `READ_PHONE_STATE`/`READ_PHONE_NUMBERS` (для номера SIM), `INTERNET`,
+   `FOREGROUND_SERVICE`, исключение из оптимизации батареи (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`). На Android 13+ при установке
+   APK вне Google Play ограничений на `READ_SMS` нет; для Play такое приложение не пройдёт — распространять APK напрямую.
+5. **Heartbeat** в том же foreground service раз в 60–120 с с уровнем батареи (`BatteryManager`) и типом сети (`ConnectivityManager`).
+6. **Настройки в приложении**: базовый URL, ключ регистрации (если не вшит), имя телефона; кнопка «Проверить связь» (`GET /me`).
+7. **Логика старта**: есть токен → `GET /me`; 401 → `register`; затем выгрузка `content://sms` новее курсора (`GET /messages`) и запуск receiver/heartbeat.
+8. **USSD-команды** (разделы 2.6–2.7):
+   - разрешение в манифесте и runtime-запрос: `android.permission.CALL_PHONE` (без него `sendUssdRequest` бросает `SecurityException`);
+     `READ_PHONE_STATE` — чтобы выбрать SIM по `simSlot` через `SubscriptionManager`;
+   - выполнение: `TelephonyManager.sendUssdRequest(payload, callback, Handler(Looper.getMainLooper()))`.
+     Для конкретной SIM — `telephonyManager.createForSubscriptionId(subId)`, где `subId` берётся из
+     `SubscriptionManager.getActiveSubscriptionInfoForSimSlotIndex(simSlot).subscriptionId`; при `simSlot = null` — дефолтный менеджер;
+   - обработчик — `UssdResponseCallback`:
+     `onReceiveUssdResponse(tm, request, response)` → `POST …/result {ok:true, response: response.toString()}`;
+     `onReceiveUssdResponseFailed(tm, request, failureCode)` → `POST …/result {ok:false, errorCode: failureCode}`;
+   - своим таймером ограничить ожидание ответа 60 с — если callback не пришёл, прислать `ok:false, errorCode: -100, errorMessage: "timeout"`;
+   - команды выполнять **строго по одной**: пока не получен callback (или таймаут), следующую не запускать — радиомодуль не держит две USSD-сессии;
+   - многошаговые меню (`*111#` → «введите 1») API не поддерживает: приходит только первый экран ответа.
+
+```kotlin
+// Пример: выполнение одной команды из ответа heartbeat/commands
+fun runUssd(cmd: Command, api: GatewayApi) {
+    val base = getSystemService(TelephonyManager::class.java)
+    val tm = cmd.simSlot?.let { slot ->
+        getSystemService(SubscriptionManager::class.java)
+            .getActiveSubscriptionInfoForSimSlotIndex(slot)
+            ?.let { base.createForSubscriptionId(it.subscriptionId) }
+    } ?: base
+
+    val callback = object : TelephonyManager.UssdResponseCallback() {
+        override fun onReceiveUssdResponse(tm: TelephonyManager, request: String, response: CharSequence) {
+            api.postResult(cmd.id, ok = true, response = response.toString())
+        }
+        override fun onReceiveUssdResponseFailed(tm: TelephonyManager, request: String, failureCode: Int) {
+            api.postResult(cmd.id, ok = false, errorCode = failureCode)
+        }
+    }
+    try {
+        tm.sendUssdRequest(cmd.payload, callback, Handler(Looper.getMainLooper()))
+    } catch (e: SecurityException) {
+        api.postResult(cmd.id, ok = false, errorCode = -101, errorMessage = "CALL_PHONE not granted")
+    }
+}
+```
+
+## 5. Пример curl
+
+```bash
+# регистрация
+curl -sS -X POST https://dogovor.guv.by/api/sms-gateway/register \
+  -H 'Content-Type: application/json' -H 'X-Enroll-Key: enroll_XXXX' \
+  -d '{"deviceKey":"test-device-1","model":"Pixel 7","manufacturer":"Google","androidVersion":"14","appVersion":"dev"}'
+
+# отправка СМС
+curl -sS -X POST https://dogovor.guv.by/api/sms-gateway/messages \
+  -H 'Content-Type: application/json' -H 'Authorization: Bearer sgw_XXXX' \
+  -d '{"messages":[{"externalId":"t1","address":"A1","body":"Код 123456","receivedAt":1761660191000}]}'
+
+# heartbeat (в ответе — очередь команд)
+curl -sS -X POST https://dogovor.guv.by/api/sms-gateway/heartbeat \
+  -H 'Content-Type: application/json' -H 'Authorization: Bearer sgw_XXXX' -d '{"batteryLevel":90,"networkType":"wifi"}'
+
+# забрать USSD-команды отдельно
+curl -sS https://dogovor.guv.by/api/sms-gateway/commands -H 'Authorization: Bearer sgw_XXXX'
+
+# прислать ответ оператора на команду 17
+curl -sS -X POST https://dogovor.guv.by/api/sms-gateway/commands/17/result \
+  -H 'Content-Type: application/json' -H 'Authorization: Bearer sgw_XXXX' \
+  -d '{"ok":true,"response":"Баланс: 12.50 BYN"}'
+```
